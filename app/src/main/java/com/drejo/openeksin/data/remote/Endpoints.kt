@@ -20,6 +20,8 @@ object Endpoints {
     const val FAVORITE = "$BASE/entry/favla"
     const val UNFAVORITE = "$BASE/entry/favlama"
     const val VOTE = "$BASE/entry/vote"
+    const val MESSAGES = "$BASE/mesaj"
+    const val EVENTS = "$BASE/basliklar/olay"
 
     /** A modern, consistent Chrome-on-Android UA so Cloudflare does not flag us. */
     const val USER_AGENT =

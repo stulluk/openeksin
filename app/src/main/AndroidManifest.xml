@@ -35,10 +35,5 @@
             android:exported="false"
             android:label="@string/login_title"
             android:theme="@style/Theme.Openeksin" />
-
-        <activity
-            android:name=".data.remote.WebPageActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Openeksin" />
     </application>
 </manifest>

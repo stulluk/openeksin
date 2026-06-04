@@ -47,6 +47,7 @@ fun FeedPage(
     reloadKey: Int,
     onVerifyCloudflare: (String) -> Unit,
     onTopicClick: (Topic) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val repository = remember { EksiRepository() }
     val state by produceState<TopicListUiState>(TopicListUiState.Loading, feed.path, reloadKey) {
@@ -63,6 +64,7 @@ fun FeedPage(
         state = state,
         onVerifyCloudflare = onVerifyCloudflare,
         onTopicClick = onTopicClick,
+        modifier = modifier,
     )
 }
 

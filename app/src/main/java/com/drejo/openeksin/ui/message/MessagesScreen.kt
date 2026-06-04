@@ -1,0 +1,216 @@
+package com.drejo.openeksin.ui.message
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.drejo.openeksin.data.EksiRepository
+import com.drejo.openeksin.data.model.Message
+import com.drejo.openeksin.data.model.MessageThread
+import com.drejo.openeksin.ui.theme.EksiPalette
+import com.drejo.openeksin.ui.theme.LocalEkColors
+
+private sealed interface InboxState {
+    data object Loading : InboxState
+    data class Success(val threads: List<MessageThread>) : InboxState
+    data class Error(val message: String) : InboxState
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessagesScreen(onBack: () -> Unit, onOpenThread: (MessageThread) -> Unit) {
+    val repository = remember { EksiRepository() }
+    val state by produceState<InboxState>(InboxState.Loading) {
+        value = try {
+            InboxState.Success(repository.messages())
+        } catch (e: Exception) {
+            InboxState.Error(e.message ?: "error")
+        }
+    }
+
+    Scaffold(topBar = { MessageTopBar(title = "mesajlar", onBack = onBack) }) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when (val s = state) {
+                is InboxState.Loading ->
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+
+                is InboxState.Error ->
+                    Text(s.message, modifier = Modifier.align(Alignment.Center).padding(24.dp))
+
+                is InboxState.Success ->
+                    if (s.threads.isEmpty()) {
+                        Text("mesaj yok", modifier = Modifier.align(Alignment.Center))
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            items(s.threads, key = { it.threadId }) { thread ->
+                                ThreadRow(thread, onClick = { onOpenThread(thread) })
+                                HorizontalDivider(color = LocalEkColors.current.divider)
+                            }
+                        }
+                    }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadRow(thread: MessageThread, onClick: () -> Unit) {
+    val ek = LocalEkColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (thread.unreadCount.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .widthIn(min = 36.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(ek.rankBadge)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = thread.unreadCount,
+                    color = ek.rankBadgeText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+            Text(thread.nick, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = ek.mainText)
+            if (thread.preview.isNotEmpty()) {
+                Text(
+                    text = thread.preview,
+                    fontSize = 13.sp,
+                    color = ek.secondaryText,
+                    maxLines = 2,
+                )
+            }
+        }
+        if (thread.date.isNotEmpty()) {
+            Text(
+                text = thread.date,
+                fontSize = 11.sp,
+                color = ek.secondaryText,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit) {
+    val repository = remember { EksiRepository() }
+    val state by produceState<List<Message>?>(null, thread.link) {
+        value = try {
+            repository.messageThread(thread.link)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    Scaffold(topBar = { MessageTopBar(title = thread.nick, onBack = onBack) }) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            val messages = state
+            when {
+                messages == null ->
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+
+                messages.isEmpty() ->
+                    Text("mesaj yok", modifier = Modifier.align(Alignment.Center))
+
+                else ->
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
+                    ) {
+                        items(messages) { message -> MessageBubble(message) }
+                    }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageBubble(message: Message) {
+    val ek = LocalEkColors.current
+    val bubbleColor = if (message.incoming) ek.divider else EksiPalette.RankBadge
+    val textColor = if (message.incoming) ek.mainText else Color.White
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (message.incoming) Arrangement.Start else Arrangement.End,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(bubbleColor)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Text(message.text, fontSize = 14.sp, color = textColor)
+            if (message.date.isNotEmpty()) {
+                Text(
+                    text = message.date,
+                    fontSize = 10.sp,
+                    color = textColor.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MessageTopBar(title: String, onBack: () -> Unit) {
+    TopAppBar(
+        title = { Text(title) },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "geri", tint = Color.White)
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = EksiPalette.Toolbar,
+            titleContentColor = Color.White,
+            navigationIconContentColor = Color.White,
+        ),
+    )
+}

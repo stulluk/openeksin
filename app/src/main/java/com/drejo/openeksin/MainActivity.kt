@@ -52,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,15 +69,18 @@ import com.drejo.openeksin.data.EksiRepository
 import com.drejo.openeksin.data.Feed
 import com.drejo.openeksin.data.Feeds
 import com.drejo.openeksin.data.SessionManager
+import com.drejo.openeksin.data.model.MessageThread
 import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.remote.CloudflareActivity
 import com.drejo.openeksin.data.remote.Endpoints
 import com.drejo.openeksin.data.remote.LoginActivity
-import com.drejo.openeksin.data.remote.WebPageActivity
 import com.drejo.openeksin.ui.entry.EntryListScreen
+import com.drejo.openeksin.ui.message.MessageThreadScreen
+import com.drejo.openeksin.ui.message.MessagesScreen
 import com.drejo.openeksin.ui.theme.EksiPalette
 import com.drejo.openeksin.ui.theme.OpeneksinTheme
 import com.drejo.openeksin.ui.topic.FeedPage
+import com.drejo.openeksin.ui.topic.StandaloneFeedScreen
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -91,12 +95,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private sealed interface Screen {
+    data object Home : Screen
+    data class Entries(val topic: Topic) : Screen
+    data object Messages : Screen
+    data class Thread(val thread: MessageThread) : Screen
+    data class FeedScreen(val feed: Feed) : Screen
+}
+
 @Composable
 private fun AppRoot() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var selectedTopic by remember { mutableStateOf<Topic?>(null) }
+    val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    fun navigate(screen: Screen) { backStack.add(screen) }
+    fun back() { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
     var reloadKey by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) { SessionManager.refresh() }
@@ -123,47 +137,55 @@ private fun AppRoot() {
                 .putExtra(CloudflareActivity.EXTRA_URL, url),
         )
     }
+    val onTopicClick: (Topic) -> Unit = { navigate(Screen.Entries(it)) }
     val onOpenLink: (String, String) -> Unit = { href, title ->
         val isTopic = href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/?")
         if (isTopic) {
-            selectedTopic = Topic(title = title, link = href, entryCount = "")
+            navigate(Screen.Entries(Topic(title = title, link = href, entryCount = "")))
         } else {
             val url = if (href.startsWith("http")) href else Endpoints.BASE + href
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }
     }
 
-    val current = selectedTopic
-    if (current != null) {
-        BackHandler { selectedTopic = null }
-        EntryListScreen(
-            topic = current,
-            onBack = { selectedTopic = null },
+    BackHandler(enabled = backStack.size > 1) { back() }
+
+    when (val current = backStack.last()) {
+        Screen.Home -> HomeScreen(
+            reloadKey = reloadKey,
+            onVerifyCloudflare = onVerifyCloudflare,
+            onTopicClick = onTopicClick,
+            onLogin = { loginLauncher.launch(Intent(context, LoginActivity::class.java)) },
+            onLogout = {
+                SessionManager.logout()
+                reloadKey++
+            },
+            onOpenMessages = { navigate(Screen.Messages) },
+            onOpenFeed = { feed -> navigate(Screen.FeedScreen(feed)) },
+            onSoon = { Toast.makeText(context, "yakında", Toast.LENGTH_SHORT).show() },
+        )
+
+        is Screen.Entries -> EntryListScreen(
+            topic = current.topic,
+            onBack = { back() },
             onVerifyCloudflare = onVerifyCloudflare,
             onOpenLink = onOpenLink,
         )
-        return
-    }
 
-    HomeScreen(
-        reloadKey = reloadKey,
-        onVerifyCloudflare = onVerifyCloudflare,
-        onTopicClick = { selectedTopic = it },
-        onLogin = {
-            loginLauncher.launch(Intent(context, LoginActivity::class.java))
-        },
-        onLogout = {
-            SessionManager.logout()
-            reloadKey++
-        },
-        onOpenWeb = { url ->
-            context.startActivity(
-                Intent(context, WebPageActivity::class.java)
-                    .putExtra(WebPageActivity.EXTRA_URL, url),
-            )
-        },
-        onSoon = { Toast.makeText(context, "yakında", Toast.LENGTH_SHORT).show() },
-    )
+        Screen.Messages -> MessagesScreen(
+            onBack = { back() },
+            onOpenThread = { navigate(Screen.Thread(it)) },
+        )
+
+        is Screen.Thread -> MessageThreadScreen(thread = current.thread, onBack = { back() })
+
+        is Screen.FeedScreen -> StandaloneFeedScreen(
+            feed = current.feed,
+            onBack = { back() },
+            onVerifyCloudflare = onVerifyCloudflare,
+            onTopicClick = onTopicClick,
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -174,7 +196,8 @@ private fun HomeScreen(
     onTopicClick: (Topic) -> Unit,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
-    onOpenWeb: (String) -> Unit,
+    onOpenMessages: () -> Unit,
+    onOpenFeed: (Feed) -> Unit,
     onSoon: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -200,7 +223,8 @@ private fun HomeScreen(
                 onClose = { scope.launch { drawerState.close() } },
                 onLogin = onLogin,
                 onLogout = onLogout,
-                onOpenWeb = onOpenWeb,
+                onOpenMessages = onOpenMessages,
+                onOpenFeed = onOpenFeed,
                 onSoon = onSoon,
             )
         },
@@ -280,7 +304,8 @@ private fun DrawerContent(
     onClose: () -> Unit,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
-    onOpenWeb: (String) -> Unit,
+    onOpenMessages: () -> Unit,
+    onOpenFeed: (Feed) -> Unit,
     onSoon: () -> Unit,
 ) {
     ModalDrawerSheet(drawerContainerColor = EksiPalette.DrawerBackground) {
@@ -309,11 +334,9 @@ private fun DrawerContent(
                 DrawerItem(Icons.Filled.Person, "giriş") { onClose(); onLogin() }
             } else {
                 DrawerItem(Icons.Filled.Person, nick) { onClose() }
-                DrawerItem(Icons.Filled.MailOutline, "mesajlar") {
-                    onClose(); onOpenWeb("${Endpoints.BASE}/mesaj")
-                }
+                DrawerItem(Icons.Filled.MailOutline, "mesajlar") { onClose(); onOpenMessages() }
                 DrawerItem(Icons.Filled.DateRange, "olaylar") {
-                    onClose(); onOpenWeb("${Endpoints.BASE}/basliklar/olay")
+                    onClose(); onOpenFeed(Feed("olaylar", Endpoints.EVENTS))
                 }
                 DrawerItem(Icons.AutoMirrored.Filled.ArrowForward, "çıkış") { onClose(); onLogout() }
             }

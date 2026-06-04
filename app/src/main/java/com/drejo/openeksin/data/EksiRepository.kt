@@ -1,11 +1,14 @@
 package com.drejo.openeksin.data
 
+import com.drejo.openeksin.data.model.Message
+import com.drejo.openeksin.data.model.MessageThread
 import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.model.TopicDetail
 import com.drejo.openeksin.data.remote.EksiClient
 import com.drejo.openeksin.data.remote.Endpoints
 import com.drejo.openeksin.data.scraper.ChannelScraper
 import com.drejo.openeksin.data.scraper.EntryScraper
+import com.drejo.openeksin.data.scraper.MessageScraper
 import com.drejo.openeksin.data.scraper.TopicIndexScraper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -59,4 +62,15 @@ class EksiRepository {
             )
             body.contains("true", ignoreCase = true)
         }
+
+    /** Loads the message inbox (requires an authenticated session). */
+    suspend fun messages(): List<MessageThread> = withContext(Dispatchers.IO) {
+        MessageScraper.parseInbox(EksiClient.getHtml(Endpoints.MESSAGES, ajaxPartial = false))
+    }
+
+    /** Loads a single conversation thread by its relative link. */
+    suspend fun messageThread(link: String): List<Message> = withContext(Dispatchers.IO) {
+        val url = if (link.startsWith("http")) link else Endpoints.BASE + link
+        MessageScraper.parseThread(EksiClient.getHtml(url, ajaxPartial = false))
+    }
 }

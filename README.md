@@ -30,8 +30,11 @@ modern, testable codebase.
   left/right between feeds — no login required.
 - **Navigation drawer**: hamburger menu matching the original — `genel`
   (başlıklar / ara / arşiv / ayarlar) and `yazar` (giriş, or the logged-in nick +
-  `mesajlar` / `olaylar` / çıkış). Mesajlar/olaylar open in an in-app WebView that
-  shares the login session.
+  `mesajlar` / `olaylar` / çıkış).
+- **Messages (native)**: `mesajlar` opens a native inbox (correspondent, unread
+  count badge, preview, date) and tapping a row shows the conversation as native
+  chat bubbles (incoming/outgoing). Scraped from `/mesaj`, no WebView.
+- **Olaylar (native)**: opens `/basliklar/olay` as a native topic feed.
 - **Native entry screen**: tapping a topic opens its entries in-app with the
   original layout — per-entry favorite count, "devamını okuyayım… (N satır)"
   collapse for long entries, a separator, bold author nick + date, inline
