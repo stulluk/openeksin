@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ek_main_background">#FF1A1A1A</color>
+    <color name="ek_status_bar">#FF000000</color>
+</resources>

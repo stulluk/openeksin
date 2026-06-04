@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">openeksin</string>
+    <string name="cloudflare_title">doğrulama</string>
+    <string name="tab_today">bugün</string>
+    <string name="tab_agenda">gündem</string>
+    <string name="tab_popular">debe</string>
+    <string name="retry">tekrar dene</string>
+    <string name="error_generic">bir şeyler ters gitti</string>
+    <string name="cloudflare_needed">cloudflare doğrulaması gerekiyor</string>
+    <string name="verify">doğrula</string>
+</resources>

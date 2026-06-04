@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Design tokens extracted from the original app (functional values). -->
+    <color name="ek_blue">#FF0099CC</color>
+    <color name="ek_blue_background">#FF1865A9</color>
+    <color name="ek_main_background">#FFFFFFFF</color>
+    <color name="ek_status_bar">#FF000000</color>
+    <color name="ic_launcher_background">#FF0099CC</color>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base XML theme used by the manifest. Actual UI styling is done in
+         Compose (OpeneksinTheme). This only provides the window/splash chrome. -->
+    <style name="Theme.Openeksin" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/ek_status_bar</item>
+        <item name="android:windowBackground">@color/ek_main_background</item>
+    </style>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Openeksin" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/ek_status_bar</item>
+        <item name="android:windowBackground">@color/ek_main_background</item>
+    </style>
+</resources>

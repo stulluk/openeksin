@@ -1,0 +1,30 @@
+# Gradle
+.gradle/
+build/
+app/build/
+/captures/
+/.kotlin/
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+local.properties
+
+# Build env artifacts created by the Docker build (mapped HOME=/work)
+/.android/
+/.config/
+/.java/
+
+# Signing
+*.keystore
+*.jks
+
+# APK output
+*.apk
+*.idsig
+
+# OS
+.DS_Store
+
+# Root-level working screenshots (curated copies live in docs/)
+/screenshot_*.png
