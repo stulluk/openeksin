@@ -25,6 +25,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -70,6 +72,7 @@ import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.remote.CloudflareActivity
 import com.drejo.openeksin.data.remote.Endpoints
 import com.drejo.openeksin.data.remote.LoginActivity
+import com.drejo.openeksin.data.remote.WebPageActivity
 import com.drejo.openeksin.ui.entry.EntryListScreen
 import com.drejo.openeksin.ui.theme.EksiPalette
 import com.drejo.openeksin.ui.theme.OpeneksinTheme
@@ -153,6 +156,12 @@ private fun AppRoot() {
             SessionManager.logout()
             reloadKey++
         },
+        onOpenWeb = { url ->
+            context.startActivity(
+                Intent(context, WebPageActivity::class.java)
+                    .putExtra(WebPageActivity.EXTRA_URL, url),
+            )
+        },
         onSoon = { Toast.makeText(context, "yakında", Toast.LENGTH_SHORT).show() },
     )
 }
@@ -165,6 +174,7 @@ private fun HomeScreen(
     onTopicClick: (Topic) -> Unit,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
+    onOpenWeb: (String) -> Unit,
     onSoon: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -190,6 +200,7 @@ private fun HomeScreen(
                 onClose = { scope.launch { drawerState.close() } },
                 onLogin = onLogin,
                 onLogout = onLogout,
+                onOpenWeb = onOpenWeb,
                 onSoon = onSoon,
             )
         },
@@ -269,6 +280,7 @@ private fun DrawerContent(
     onClose: () -> Unit,
     onLogin: () -> Unit,
     onLogout: () -> Unit,
+    onOpenWeb: (String) -> Unit,
     onSoon: () -> Unit,
 ) {
     ModalDrawerSheet(drawerContainerColor = EksiPalette.DrawerBackground) {
@@ -297,6 +309,12 @@ private fun DrawerContent(
                 DrawerItem(Icons.Filled.Person, "giriş") { onClose(); onLogin() }
             } else {
                 DrawerItem(Icons.Filled.Person, nick) { onClose() }
+                DrawerItem(Icons.Filled.MailOutline, "mesajlar") {
+                    onClose(); onOpenWeb("${Endpoints.BASE}/mesaj")
+                }
+                DrawerItem(Icons.Filled.DateRange, "olaylar") {
+                    onClose(); onOpenWeb("${Endpoints.BASE}/basliklar/olay")
+                }
                 DrawerItem(Icons.AutoMirrored.Filled.ArrowForward, "çıkış") { onClose(); onLogout() }
             }
         }

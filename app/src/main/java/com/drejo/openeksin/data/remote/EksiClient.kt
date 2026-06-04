@@ -1,5 +1,6 @@
 package com.drejo.openeksin.data.remote
 
+import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -50,6 +51,24 @@ object EksiClient {
                 throw CloudflareException(url)
             }
             return body
+        }
+    }
+
+    /**
+     * POST a form-urlencoded body to [url] (with `X-Requested-With:
+     * XMLHttpRequest`) using the shared session cookies. Returns the response
+     * body; used for authenticated actions like favorite and vote.
+     */
+    fun postForm(url: String, params: Map<String, String>): String {
+        val form = FormBody.Builder()
+        params.forEach { (key, value) -> form.add(key, value) }
+        val request = Request.Builder()
+            .url(url)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .post(form.build())
+            .build()
+        okHttp.newCall(request).execute().use { response: Response ->
+            return response.body?.string().orEmpty()
         }
     }
 

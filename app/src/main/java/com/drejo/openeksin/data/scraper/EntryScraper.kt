@@ -27,10 +27,12 @@ object EntryScraper {
             Entry(
                 id = li.attr("data-id"),
                 author = li.attr("data-author"),
+                authorId = li.attr("data-author-id"),
                 date = li.selectFirst(".entry-date")?.text()?.trim().orEmpty(),
                 content = segments.joinToString("") { it.text }.trim(),
                 segments = segments,
                 favoriteCount = li.attr("data-favorite-count"),
+                isFavorite = li.attr("data-isfavorite") == "true",
             )
         }
 

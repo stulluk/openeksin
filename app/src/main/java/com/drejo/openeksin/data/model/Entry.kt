@@ -10,10 +10,12 @@ data class ContentSegment(
 data class Entry(
     val id: String,
     val author: String,
+    val authorId: String,
     val date: String,
     val content: String,
     val segments: List<ContentSegment>,
     val favoriteCount: String,
+    val isFavorite: Boolean,
 )
 
 /** A topic page: title, entries and pagination state. */

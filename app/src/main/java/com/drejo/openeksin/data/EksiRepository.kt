@@ -40,4 +40,23 @@ class EksiRepository {
         val html = EksiClient.getHtml(url, ajaxPartial = false)
         EntryScraper.parse(html)
     }
+
+    /** Favorites (or un-favorites) an entry. Returns true on success. */
+    suspend fun favorite(entryId: String, remove: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val url = if (remove) Endpoints.UNFAVORITE else Endpoints.FAVORITE
+        val body = EksiClient.postForm(url, mapOf("entryId" to entryId))
+        body.contains("\"Success\":true", ignoreCase = true) ||
+            body.contains("\"success\":true", ignoreCase = true) ||
+            body.contains("Count", ignoreCase = true)
+    }
+
+    /** Votes on an entry. [rate] is "1" (artı) or "-1" (eksi). Returns true on success. */
+    suspend fun vote(entryId: String, ownerId: String, rate: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val body = EksiClient.postForm(
+                Endpoints.VOTE,
+                mapOf("id" to entryId, "rate" to rate, "owner" to ownerId),
+            )
+            body.contains("true", ignoreCase = true)
+        }
 }

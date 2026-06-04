@@ -1,6 +1,7 @@
 package com.drejo.openeksin.ui.entry
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,10 +17,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Opacity
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,11 +41,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +66,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drejo.openeksin.data.EksiRepository
+import com.drejo.openeksin.data.SessionManager
 import com.drejo.openeksin.data.model.Entry
 import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.model.TopicDetail
@@ -63,6 +75,7 @@ import com.drejo.openeksin.data.remote.Endpoints
 import com.drejo.openeksin.ui.theme.EksiPalette
 import com.drejo.openeksin.ui.theme.LocalEkColors
 import com.drejo.openeksin.ui.theme.TextSizes
+import kotlinx.coroutines.launch
 
 private const val COLLAPSED_LINES = 8
 private const val URL_TAG = "URL"
@@ -326,7 +339,21 @@ private fun EntryRow(entry: Entry, onOpenLink: (String, String) -> Unit) {
 @Composable
 private fun EntryMenuSheet(entry: Entry, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repository = remember { EksiRepository() }
+    val nick by SessionManager.nick.collectAsState()
+    val loggedIn = nick != null
+    var isFav by remember(entry.id) { mutableStateOf(entry.isFavorite) }
     val entryUrl = "${Endpoints.BASE}/entry/${entry.id}"
+
+    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    fun share() {
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, entryUrl)
+        }
+        context.startActivity(Intent.createChooser(send, null))
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -337,32 +364,63 @@ private fun EntryMenuSheet(entry: Entry, onDismiss: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
             HorizontalDivider()
-            SheetItem("paylaş") {
-                val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, entryUrl)
+            if (loggedIn) {
+                SheetItem(Icons.Filled.Opacity, if (isFav) "favorilerden çıkar" else "favori") {
+                    val remove = isFav
+                    scope.launch {
+                        val ok = runCatching { repository.favorite(entry.id, remove) }.getOrDefault(false)
+                        if (ok) isFav = !remove
+                        toast(if (ok) (if (remove) "favoriden çıkarıldı" else "favorilendi") else "başarısız")
+                    }
+                    onDismiss()
                 }
-                context.startActivity(Intent.createChooser(send, null))
-                onDismiss()
-            }
-            SheetItem("tarayıcıda aç") {
-                context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(entryUrl)))
-                onDismiss()
+                SheetItem(Icons.Filled.KeyboardArrowUp, "artı oy") {
+                    scope.launch {
+                        val ok = runCatching { repository.vote(entry.id, entry.authorId, "1") }.getOrDefault(false)
+                        toast(if (ok) "artı oy verildi" else "başarısız")
+                    }
+                    onDismiss()
+                }
+                SheetItem(Icons.Filled.KeyboardArrowDown, "eksi oy") {
+                    scope.launch {
+                        val ok = runCatching { repository.vote(entry.id, entry.authorId, "-1") }.getOrDefault(false)
+                        toast(if (ok) "eksi oy verildi" else "başarısız")
+                    }
+                    onDismiss()
+                }
+                SheetItem(Icons.Filled.MailOutline, "mesaj yolla") { toast("yakında"); onDismiss() }
+                SheetItem(Icons.Filled.Share, "paylaş") { share(); onDismiss() }
+                SheetItem(Icons.Filled.AddCircle, "takip et") { toast("yakında"); onDismiss() }
+                SheetItem(Icons.Filled.Block, "engelle") { toast("yakında"); onDismiss() }
+                SheetItem(Icons.Filled.Block, "başlıklarını engelle") { toast("yakında"); onDismiss() }
+                SheetItem(Icons.Filled.Save, "kaydet") { toast("yakında"); onDismiss() }
+            } else {
+                SheetItem(Icons.Filled.Share, "paylaş") { share(); onDismiss() }
+                SheetItem(Icons.Filled.OpenInBrowser, "tarayıcıda aç") {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(entryUrl)))
+                    onDismiss()
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SheetItem(label: String, onClick: () -> Unit) {
-    Text(
-        text = label,
-        fontSize = 15.sp,
+private fun SheetItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-    )
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp))
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            modifier = Modifier.padding(start = 20.dp),
+        )
+    }
 }
 
 private fun buildContent(entry: Entry): AnnotatedString = buildAnnotatedString {

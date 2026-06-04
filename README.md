@@ -30,12 +30,16 @@ modern, testable codebase.
   left/right between feeds — no login required.
 - **Navigation drawer**: hamburger menu matching the original — `genel`
   (başlıklar / ara / arşiv / ayarlar) and `yazar` (giriş, or the logged-in nick +
-  çıkış).
+  `mesajlar` / `olaylar` / çıkış). Mesajlar/olaylar open in an in-app WebView that
+  shares the login session.
 - **Native entry screen**: tapping a topic opens its entries in-app with the
   original layout — per-entry favorite count, "devamını okuyayım… (N satır)"
-  collapse for long entries, a separator, bold author nick + date, a 3-dot
-  action sheet (paylaş / tarayıcıda aç), inline `(bkz: …)` links, and page
-  navigation (`1 / N`). No external browser.
+  collapse for long entries, a separator, bold author nick + date, inline
+  `(bkz: …)` links, and page navigation (`1 / N`). No external browser.
+- **Entry actions**: the 3-dot sheet matches the original. Logged out: paylaş /
+  tarayıcıda aç. Logged in: **favori** (favla/favlama) and **artı/eksi oy**
+  (vote) are wired to the real endpoints and verified on-device; mesaj yolla /
+  takip et / engelle / kaydet are stubbed for now.
 - **Login**: WebView sign-in (`LoginActivity`) at `/giris`; cookies are shared
   with okhttp, the nick is detected from the home page, and the session is
   restored on next launch. Logout clears cookies.
