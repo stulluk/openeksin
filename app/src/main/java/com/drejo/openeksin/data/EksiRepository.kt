@@ -159,4 +159,120 @@ class EksiRepository {
                 referer = Endpoints.BASE,
             ).first
         }
+
+    /** Saves a draft entry on the topic page (/savedraft), matching Ekşin. */
+    suspend fun saveDraft(topicPath: String, topicTitle: String, content: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (content.isBlank() || topicTitle.isBlank()) return@withContext false
+            val topicUrl = if (topicPath.startsWith("http")) topicPath else Endpoints.BASE + topicPath
+            val cleanUrl = topicUrl.substringBefore("?")
+            val body = buildString {
+                append("title=")
+                append(URLEncoder.encode(topicTitle, "UTF-8"))
+                append("&content=")
+                append(URLEncoder.encode(content, "UTF-8"))
+            }
+            EksiClient.postRawBody(
+                "$cleanUrl/savedraft",
+                body,
+                ajax = true,
+                referer = topicUrl,
+            ).first
+        }
+
+    /**
+     * Posts a new entry to the topic at [topicPath]. Scrapes the compose form from
+     * the topic page first. Returns the final entry URL on success.
+     */
+    suspend fun addEntry(topicPath: String, content: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            if (content.isBlank()) return@withContext Result.failure(IllegalArgumentException("empty"))
+            val topicUrl = if (topicPath.startsWith("http")) topicPath else Endpoints.BASE + topicPath
+            val html = EksiClient.getHtml(topicUrl, ajaxPartial = false)
+            val form = EntryScraper.parseComposeForm(html)
+                ?: return@withContext Result.failure(IllegalStateException("not_logged_in"))
+            val detail = EntryScraper.parse(html)
+            val canonicalPath = detail.titlePath.takeIf { it.isNotBlank() } ?: topicPath
+            val referer = if (canonicalPath.startsWith("http")) {
+                canonicalPath.substringBefore("?")
+            } else {
+                Endpoints.BASE + canonicalPath.substringBefore("?")
+            }
+            val (_, body) = EksiClient.postFormResult(
+                Endpoints.ENTRY_ADD,
+                mapOf(
+                    "__RequestVerificationToken" to form.token,
+                    "Title" to form.title,
+                    "Id" to form.topicId,
+                    "ReturnUrl" to "",
+                    "Content" to content,
+                    "InputStartTime" to form.inputStartTime,
+                    "AddAsHidden" to "false",
+                ),
+                ajax = false,
+                referer = referer,
+            )
+            val redirectEntry = Regex("""/entry/(\d+)""").find(body)?.groupValues?.get(1)
+            if (redirectEntry != null) {
+                return@withContext Result.success(Endpoints.ENTRY + redirectEntry)
+            }
+            // Site often returns 200 on /entry/ekle even on success; verify on last page.
+            val verifyBase = if (canonicalPath.startsWith("http")) {
+                canonicalPath.substringBefore("?")
+            } else {
+                Endpoints.BASE + canonicalPath.substringBefore("?")
+            }
+            val verifyUrl = if (detail.pageCount > 1) {
+                "$verifyBase?p=${detail.pageCount}"
+            } else {
+                verifyBase
+            }
+            val verifyHtml = EksiClient.getHtml(verifyUrl, ajaxPartial = false)
+            if (verifyHtml.contains(content)) {
+                Result.success(verifyUrl)
+            } else {
+                Result.failure(IllegalStateException("post_failed"))
+            }
+        }
+
+    /** Follows or unfollows a topic by numeric id. */
+    suspend fun watchTopic(topicId: String, watch: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (topicId.isBlank()) return@withContext false
+        val url = if (watch) Endpoints.watchTopic(topicId) else Endpoints.unwatchTopic(topicId)
+        EksiClient.postFormResult(url, emptyMap(), ajax = true, referer = Endpoints.BASE).first
+    }
+
+    /** Deletes an entry owned by the logged-in user. */
+    suspend fun deleteEntry(entryId: String): Boolean = withContext(Dispatchers.IO) {
+        if (entryId.isBlank()) return@withContext false
+        EksiClient.postFormResultAcceptingRedirect(
+            Endpoints.ENTRY_DELETE,
+            mapOf("id" to entryId),
+            ajax = true,
+            referer = Endpoints.ENTRY + entryId,
+        )
+    }
+
+    /** Posts an edited entry body to /entry/duzelt/{id}. */
+    suspend fun editEntry(entryId: String, content: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            if (content.isBlank()) return@withContext Result.failure(IllegalArgumentException("empty"))
+            val url = Endpoints.entryEdit(entryId)
+            val html = EksiClient.getHtml(url, ajaxPartial = false)
+            val form = EntryScraper.parseEditForm(html, entryId)
+                ?: return@withContext Result.failure(IllegalStateException("not_allowed"))
+            val ok = EksiClient.postFormResult(
+                url,
+                mapOf(
+                    "__RequestVerificationToken" to form.token,
+                    "Title" to form.title,
+                    "ReturnUrl" to "",
+                    "InputStartTime" to form.inputStartTime,
+                    "Content" to content,
+                ),
+                ajax = false,
+                referer = url,
+            ).first
+            if (ok) Result.success(Unit) else Result.failure(IllegalStateException("post_failed"))
+        }
 }

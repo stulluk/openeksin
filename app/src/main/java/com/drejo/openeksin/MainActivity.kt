@@ -40,10 +40,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -79,6 +75,7 @@ import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.remote.CloudflareActivity
 import com.drejo.openeksin.data.remote.Endpoints
 import com.drejo.openeksin.data.remote.LoginActivity
+import com.drejo.openeksin.ui.entry.EntryComposeScreen
 import com.drejo.openeksin.ui.entry.EntryListScreen
 import com.drejo.openeksin.ui.message.MessageThreadScreen
 import com.drejo.openeksin.ui.message.MessagesScreen
@@ -88,6 +85,7 @@ import com.drejo.openeksin.ui.misc.SettingsScreen
 import com.drejo.openeksin.ui.theme.EksiPalette
 import com.drejo.openeksin.ui.theme.OpeneksinTheme
 import com.drejo.openeksin.ui.topic.FeedPage
+import com.drejo.openeksin.ui.topic.FeedTabRow
 import com.drejo.openeksin.ui.topic.StandaloneFeedScreen
 import kotlinx.coroutines.launch
 
@@ -115,6 +113,7 @@ class MainActivity : ComponentActivity() {
 private sealed interface Screen {
     data object Home : Screen
     data class Entries(val topic: Topic) : Screen
+    data class Compose(val topic: Topic, val draft: String = "", val entryId: String? = null) : Screen
     data object Messages : Screen
     data class Thread(val thread: MessageThread) : Screen
     data class FeedScreen(val feed: Feed) : Screen
@@ -191,9 +190,25 @@ private fun AppRoot() {
 
         is Screen.Entries -> EntryListScreen(
             topic = current.topic,
+            reloadKey = reloadKey,
             onBack = { back() },
             onVerifyCloudflare = onVerifyCloudflare,
             onOpenLink = onOpenLink,
+            onCompose = { topic, draft, entryId ->
+                navigate(Screen.Compose(topic, draft, entryId))
+            },
+            onOpenSearch = { navigate(Screen.Search) },
+            onLogin = { loginLauncher.launch(Intent(context, LoginActivity::class.java)) },
+            onReload = { reloadKey++ },
+        )
+
+        is Screen.Compose -> EntryComposeScreen(
+            topic = current.topic,
+            draft = current.draft,
+            entryId = current.entryId,
+            onBack = { back() },
+            onPosted = { reloadKey++; back() },
+            onLogin = { loginLauncher.launch(Intent(context, LoginActivity::class.java)) },
         )
 
         Screen.Messages -> MessagesScreen(
@@ -295,30 +310,13 @@ private fun HomeScreen(
             },
         ) { innerPadding ->
             Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                ScrollableTabRow(
-                    selectedTabIndex = pagerState.currentPage,
-                    containerColor = EksiPalette.TabBar,
-                    contentColor = EksiPalette.TabSelected,
-                    edgePadding = 8.dp,
-                    indicator = { positions ->
-                        if (pagerState.currentPage < positions.size) {
-                            TabRowDefaults.SecondaryIndicator(
-                                modifier = Modifier.tabIndicatorOffset(positions[pagerState.currentPage]),
-                                color = EksiPalette.TabSelected,
-                            )
-                        }
+                FeedTabRow(
+                    feeds = feeds,
+                    selectedIndex = pagerState.currentPage,
+                    onTabSelected = { index ->
+                        scope.launch { pagerState.animateScrollToPage(index) }
                     },
-                ) {
-                    feeds.forEachIndexed { index, feed ->
-                        Tab(
-                            selected = pagerState.currentPage == index,
-                            onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                            text = { Text(feed.title, maxLines = 1) },
-                            selectedContentColor = EksiPalette.TabSelected,
-                            unselectedContentColor = EksiPalette.TabUnselected,
-                        )
-                    }
-                }
+                )
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),

@@ -1,8 +1,10 @@
 package com.drejo.openeksin.data.remote
 
 import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.util.concurrent.TimeUnit
 
@@ -66,6 +68,25 @@ object EksiClient {
         referer: String? = null,
     ): String = postFormResult(url, params, ajax, referer).second
 
+    /** POST a raw application/x-www-form-urlencoded body. */
+    fun postRawBody(
+        url: String,
+        body: String,
+        ajax: Boolean = true,
+        referer: String? = null,
+    ): Pair<Boolean, String> {
+        val mediaType = "application/x-www-form-urlencoded".toMediaType()
+        val builder = Request.Builder()
+            .url(url)
+            .post(body.toRequestBody(mediaType))
+        if (ajax) builder.header("X-Requested-With", "XMLHttpRequest")
+        if (referer != null) builder.header("Referer", referer)
+        okHttp.newCall(builder.build()).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            return (response.isSuccessful && text.contains("true", ignoreCase = true)) to text
+        }
+    }
+
     /** Like [postForm] but also reports whether the response was successful. */
     fun postFormResult(
         url: String,
@@ -79,7 +100,52 @@ object EksiClient {
         if (ajax) builder.header("X-Requested-With", "XMLHttpRequest")
         if (referer != null) builder.header("Referer", referer)
         okHttp.newCall(builder.build()).execute().use { response: Response ->
-            return response.isSuccessful to response.body?.string().orEmpty()
+            val body = response.body?.string().orEmpty()
+            return response.isSuccessful to body
+        }
+    }
+
+    /**
+     * Like [postFormResult] but treats any HTTP status below 400 as success, matching
+     * the original Ekşin client (e.g. entry delete via [RemoveEntryObservable]).
+     */
+    fun postFormResultAcceptingRedirect(
+        url: String,
+        params: Map<String, String>,
+        ajax: Boolean = true,
+        referer: String? = null,
+    ): Boolean {
+        val form = FormBody.Builder()
+        params.forEach { (key, value) -> form.add(key, value) }
+        val builder = Request.Builder().url(url).post(form.build())
+        if (ajax) builder.header("X-Requested-With", "XMLHttpRequest")
+        if (referer != null) builder.header("Referer", referer)
+        okHttp.newCall(builder.build()).execute().use { response ->
+            return response.code < 400
+        }
+    }
+
+    /**
+     * POST a form and return the final request URL after redirects. Used for entry
+     * submission where success is a redirect to /entry/{id}.
+     */
+    fun postFormFinalUrl(
+        url: String,
+        params: Map<String, String>,
+        referer: String,
+    ): String? {
+        val form = FormBody.Builder()
+        params.forEach { (key, value) -> form.add(key, value) }
+        val request = Request.Builder()
+            .url(url)
+            .post(form.build())
+            .header("Referer", referer)
+            .build()
+        okHttp.newCall(request).execute().use { response ->
+            val finalUrl = response.request.url.toString()
+            if (finalUrl.contains("/entry/")) return finalUrl
+            if (response.isSuccessful) return finalUrl
+            return null
         }
     }
 

@@ -29,6 +29,13 @@ object Endpoints {
     const val BUDDY_INFO = "$BASE/takip-engellenmis"
     const val ENTRY = "$BASE/entry/"
     const val AUTOCOMPLETE = "$BASE/autocomplete/query"
+    const val ENTRY_ADD = "$BASE/entry/ekle"
+    const val ENTRY_DELETE = "$BASE/entry/sil"
+
+    fun entryEdit(entryId: String) = "$BASE/entry/duzelt/$entryId"
+
+    fun watchTopic(topicId: String) = "$BASE/baslik/takip-et/$topicId"
+    fun unwatchTopic(topicId: String) = "$BASE/takip-etme/$topicId"
 
     // user-relation type codes (see decompiled ResponseProcessor)
     const val REL_FOLLOW = "b"
