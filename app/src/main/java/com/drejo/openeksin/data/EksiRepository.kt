@@ -12,6 +12,8 @@ import com.drejo.openeksin.data.scraper.MessageScraper
 import com.drejo.openeksin.data.scraper.TopicIndexScraper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.URLEncoder
 
 /** Read-only data access for topic feeds and entries. */
 class EksiRepository {
@@ -73,4 +75,66 @@ class EksiRepository {
         val url = if (link.startsWith("http")) link else Endpoints.BASE + link
         MessageScraper.parseThread(EksiClient.getHtml(url, ajaxPartial = false))
     }
+
+    /**
+     * Toggles a user relation. [code] is one of [Endpoints.REL_FOLLOW],
+     * [Endpoints.REL_BLOCK], [Endpoints.REL_BLOCK_TITLE]. Returns true on success.
+     * A Referer is required or the server rejects the request.
+     */
+    suspend fun toggleRelation(userId: String, code: String, add: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            if (userId.isBlank()) return@withContext false
+            val base = if (add) Endpoints.RELATION_ADD else Endpoints.RELATION_REMOVE
+            val url = "$base$userId?r=$code"
+            EksiClient.postFormResult(url, mapOf("r" to code), ajax = true, referer = Endpoints.BASE).first
+        }
+
+    /** Sends a reply inside an existing thread. [threadLink] e.g. "/mesaj/123". */
+    suspend fun sendReply(threadLink: String, message: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val url = if (threadLink.startsWith("http")) threadLink else Endpoints.BASE + threadLink
+            val html = EksiClient.getHtml(url, ajaxPartial = false)
+            val (token, to) = MessageScraper.parseReplyForm(html)
+            if (token.isNullOrEmpty() || to.isNullOrEmpty()) return@withContext false
+            val threadId = threadLink.substringAfterLast("/").substringBefore("?")
+            EksiClient.postFormResult(
+                Endpoints.MESSAGE_SEND,
+                mapOf(
+                    "__RequestVerificationToken" to token,
+                    "To" to to,
+                    "ThreadId" to threadId,
+                    "Message" to message,
+                ),
+                ajax = false,
+                referer = url,
+            ).first
+        }
+
+    /** Returns topic-title suggestions for [query] via the autocomplete endpoint. */
+    suspend fun searchTitles(query: String): List<String> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        val url = Endpoints.AUTOCOMPLETE + "?q=" + URLEncoder.encode(query, "UTF-8")
+        val body = EksiClient.getHtml(url, ajaxPartial = true)
+        runCatching {
+            val arr = JSONObject(body).optJSONArray("Titles") ?: return@runCatching emptyList()
+            (0 until arr.length()).map { arr.getString(it) }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Sends a brand-new message to [to], using a token scraped from an entry page. */
+    suspend fun sendNewMessage(to: String, message: String, entryId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val html = EksiClient.getHtml(Endpoints.ENTRY + entryId, ajaxPartial = false)
+            val token = MessageScraper.parseSendToken(html) ?: return@withContext false
+            EksiClient.postFormResult(
+                Endpoints.MESSAGE_SEND_AJAX,
+                mapOf(
+                    "__RequestVerificationToken" to token,
+                    "To" to to,
+                    "Message" to message,
+                ),
+                ajax = true,
+                referer = Endpoints.BASE,
+            ).first
+        }
 }

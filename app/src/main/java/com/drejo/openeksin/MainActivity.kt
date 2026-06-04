@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -69,6 +70,10 @@ import com.drejo.openeksin.data.EksiRepository
 import com.drejo.openeksin.data.Feed
 import com.drejo.openeksin.data.Feeds
 import com.drejo.openeksin.data.SessionManager
+import com.drejo.openeksin.data.local.RelationStore
+import com.drejo.openeksin.data.local.SavedStore
+import com.drejo.openeksin.data.local.SettingsStore
+import com.drejo.openeksin.data.local.ThemeMode
 import com.drejo.openeksin.data.model.MessageThread
 import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.remote.CloudflareActivity
@@ -77,6 +82,9 @@ import com.drejo.openeksin.data.remote.LoginActivity
 import com.drejo.openeksin.ui.entry.EntryListScreen
 import com.drejo.openeksin.ui.message.MessageThreadScreen
 import com.drejo.openeksin.ui.message.MessagesScreen
+import com.drejo.openeksin.ui.misc.ArchiveScreen
+import com.drejo.openeksin.ui.misc.SearchScreen
+import com.drejo.openeksin.ui.misc.SettingsScreen
 import com.drejo.openeksin.ui.theme.EksiPalette
 import com.drejo.openeksin.ui.theme.OpeneksinTheme
 import com.drejo.openeksin.ui.topic.FeedPage
@@ -87,8 +95,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SettingsStore.init(applicationContext)
+        SavedStore.init(applicationContext)
+        RelationStore.init(applicationContext)
         setContent {
-            OpeneksinTheme {
+            val themeMode by SettingsStore.themeMode.collectAsState()
+            val darkTheme = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            OpeneksinTheme(darkTheme = darkTheme) {
                 AppRoot()
             }
         }
@@ -101,6 +118,9 @@ private sealed interface Screen {
     data object Messages : Screen
     data class Thread(val thread: MessageThread) : Screen
     data class FeedScreen(val feed: Feed) : Screen
+    data object Search : Screen
+    data object Archive : Screen
+    data object Settings : Screen
 }
 
 @Composable
@@ -158,11 +178,14 @@ private fun AppRoot() {
             onLogin = { loginLauncher.launch(Intent(context, LoginActivity::class.java)) },
             onLogout = {
                 SessionManager.logout()
+                RelationStore.clear()
                 reloadKey++
             },
             onOpenMessages = { navigate(Screen.Messages) },
             onOpenFeed = { feed -> navigate(Screen.FeedScreen(feed)) },
-            onSoon = { Toast.makeText(context, "yakında", Toast.LENGTH_SHORT).show() },
+            onOpenSearch = { navigate(Screen.Search) },
+            onOpenArchive = { navigate(Screen.Archive) },
+            onOpenSettings = { navigate(Screen.Settings) },
         )
 
         is Screen.Entries -> EntryListScreen(
@@ -185,6 +208,12 @@ private fun AppRoot() {
             onVerifyCloudflare = onVerifyCloudflare,
             onTopicClick = onTopicClick,
         )
+
+        Screen.Search -> SearchScreen(onBack = { back() }, onOpenTopic = onTopicClick)
+
+        Screen.Archive -> ArchiveScreen(onBack = { back() }, onOpenTopic = onTopicClick)
+
+        Screen.Settings -> SettingsScreen(onBack = { back() })
     }
 }
 
@@ -198,7 +227,9 @@ private fun HomeScreen(
     onLogout: () -> Unit,
     onOpenMessages: () -> Unit,
     onOpenFeed: (Feed) -> Unit,
-    onSoon: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenArchive: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val nick by SessionManager.nick.collectAsState()
@@ -225,7 +256,9 @@ private fun HomeScreen(
                 onLogout = onLogout,
                 onOpenMessages = onOpenMessages,
                 onOpenFeed = onOpenFeed,
-                onSoon = onSoon,
+                onOpenSearch = onOpenSearch,
+                onOpenArchive = onOpenArchive,
+                onOpenSettings = onOpenSettings,
             )
         },
     ) {
@@ -242,7 +275,7 @@ private fun HomeScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = onSoon) {
+                        IconButton(onClick = onOpenSearch) {
                             Icon(Icons.Filled.Search, contentDescription = "ara", tint = Color.White)
                         }
                     },
@@ -306,7 +339,9 @@ private fun DrawerContent(
     onLogout: () -> Unit,
     onOpenMessages: () -> Unit,
     onOpenFeed: (Feed) -> Unit,
-    onSoon: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenArchive: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     ModalDrawerSheet(drawerContainerColor = EksiPalette.DrawerBackground) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -321,9 +356,9 @@ private fun DrawerContent(
 
             DrawerSection("genel")
             DrawerItem(Icons.AutoMirrored.Filled.List, "başlıklar") { onClose() }
-            DrawerItem(Icons.Filled.Search, "ara") { onClose(); onSoon() }
-            DrawerItem(Icons.Filled.Archive, "arşiv") { onClose(); onSoon() }
-            DrawerItem(Icons.Filled.Settings, "ayarlar") { onClose(); onSoon() }
+            DrawerItem(Icons.Filled.Search, "ara") { onClose(); onOpenSearch() }
+            DrawerItem(Icons.Filled.Archive, "arşiv") { onClose(); onOpenArchive() }
+            DrawerItem(Icons.Filled.Settings, "ayarlar") { onClose(); onOpenSettings() }
 
             HorizontalDivider(
                 color = EksiPalette.DrawerSecondaryText.copy(alpha = 0.4f),

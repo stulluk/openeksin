@@ -55,20 +55,31 @@ object EksiClient {
     }
 
     /**
-     * POST a form-urlencoded body to [url] (with `X-Requested-With:
-     * XMLHttpRequest`) using the shared session cookies. Returns the response
-     * body; used for authenticated actions like favorite and vote.
+     * POST a form-urlencoded body to [url] using the shared session cookies.
+     * Returns the response body; used for authenticated actions like favorite
+     * and vote. [ajax] toggles the `X-Requested-With: XMLHttpRequest` header.
      */
-    fun postForm(url: String, params: Map<String, String>): String {
+    fun postForm(
+        url: String,
+        params: Map<String, String>,
+        ajax: Boolean = true,
+        referer: String? = null,
+    ): String = postFormResult(url, params, ajax, referer).second
+
+    /** Like [postForm] but also reports whether the response was successful. */
+    fun postFormResult(
+        url: String,
+        params: Map<String, String>,
+        ajax: Boolean = true,
+        referer: String? = null,
+    ): Pair<Boolean, String> {
         val form = FormBody.Builder()
         params.forEach { (key, value) -> form.add(key, value) }
-        val request = Request.Builder()
-            .url(url)
-            .header("X-Requested-With", "XMLHttpRequest")
-            .post(form.build())
-            .build()
-        okHttp.newCall(request).execute().use { response: Response ->
-            return response.body?.string().orEmpty()
+        val builder = Request.Builder().url(url).post(form.build())
+        if (ajax) builder.header("X-Requested-With", "XMLHttpRequest")
+        if (referer != null) builder.header("Referer", referer)
+        okHttp.newCall(builder.build()).execute().use { response: Response ->
+            return response.isSuccessful to response.body?.string().orEmpty()
         }
     }
 

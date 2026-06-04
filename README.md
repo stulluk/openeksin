@@ -30,19 +30,30 @@ modern, testable codebase.
   left/right between feeds — no login required.
 - **Navigation drawer**: hamburger menu matching the original — `genel`
   (başlıklar / ara / arşiv / ayarlar) and `yazar` (giriş, or the logged-in nick +
-  `mesajlar` / `olaylar` / çıkış).
+  `mesajlar` / `olaylar` / çıkış). All entries are functional native screens.
+- **Search (native)**: `ara` (drawer + top-bar icon) with live title
+  autocomplete (`/autocomplete/query`); picking a suggestion opens the topic
+  in-app.
+- **Settings (native)**: `ayarlar` lets you pick the theme (system / light /
+  dark); applied instantly and persisted.
+- **Archive (native, local)**: `kaydet` on an entry stores it locally; `arşiv`
+  lists the saved entries (topic title, body, author/date) with delete.
 - **Messages (native)**: `mesajlar` opens a native inbox (correspondent, unread
   count badge, preview, date) and tapping a row shows the conversation as native
-  chat bubbles (incoming/outgoing). Scraped from `/mesaj`, no WebView.
+  chat bubbles. A reply box at the bottom sends messages (scrapes the
+  anti-forgery token from the thread, posts to `/mesaj/yolla`) — verified
+  on-device.
 - **Olaylar (native)**: opens `/basliklar/olay` as a native topic feed.
 - **Native entry screen**: tapping a topic opens its entries in-app with the
   original layout — per-entry favorite count, "devamını okuyayım… (N satır)"
   collapse for long entries, a separator, bold author nick + date, inline
   `(bkz: …)` links, and page navigation (`1 / N`). No external browser.
 - **Entry actions**: the 3-dot sheet matches the original. Logged out: paylaş /
-  tarayıcıda aç. Logged in: **favori** (favla/favlama) and **artı/eksi oy**
-  (vote) are wired to the real endpoints and verified on-device; mesaj yolla /
-  takip et / engelle / kaydet are stubbed for now.
+  tarayıcıda aç. Logged in: **favori** (favla/favlama), **artı/eksi oy** (vote),
+  **takip et / engelle / başlıklarını engelle** (userrelation toggle, with
+  correct ↔ labels), **mesaj yolla** (compose to author), **paylaş** and
+  **kaydet** (local archive). Favorite, vote, follow/unfollow and reply are
+  verified end-to-end on-device.
 - **Login**: WebView sign-in (`LoginActivity`) at `/giris`; cookies are shared
   with okhttp, the nick is detected from the home page, and the session is
   restored on next launch. Logout clears cookies.
@@ -64,15 +75,20 @@ modern, testable codebase.
 ## Architecture
 
 ```
-ui/            Compose UI + in-app navigation (MainActivity)
-ui/topic/      Topic list + per-feed pager page (FeedPage)
-ui/entry/      Native entry-list screen (topic detail)
+ui/            Compose UI + in-app navigation (MainActivity back-stack)
+ui/topic/      Topic list + per-feed pager page (FeedPage, StandaloneFeedScreen)
+ui/entry/      Native entry-list screen (topic detail) + action sheet
+ui/message/    Native message inbox + thread with reply box
+ui/misc/       Search, Settings, Archive screens
 ui/theme/      OpeneksinTheme: Color tokens, Typography, dark/light schemes
 data/          EksiRepository, TopicFeed, SessionManager
+data/local/    Persisted stores: SettingsStore (theme), SavedStore (archive),
+               RelationStore (follow/block cache)
 data/remote/   EksiClient (okhttp), Endpoints, WebViewCookieJar,
                CloudflareActivity, LoginActivity
-data/scraper/  Jsoup parsers (TopicIndexScraper, EntryScraper, LoginScraper)
-data/model/    Plain data models (Topic, Entry, TopicDetail)
+data/scraper/  Jsoup parsers (TopicIndexScraper, EntryScraper, MessageScraper,
+               ChannelScraper, LoginScraper)
+data/model/    Plain data models (Topic, Entry, TopicDetail, Message, …)
 ```
 
 Data comes from scraping eksisozluk.com's public HTML (it has no public API), the
@@ -122,12 +138,14 @@ Coroutines. minSdk 21, targetSdk 34.
 - [x] Topic → native entry list screen
 - [x] Login (WebView) + session
 - [x] `bugün` feed
-- [ ] Entry paging, "şükela" sort, favorites count
-- [ ] Search, autocomplete
-- [ ] Vote, favorite, follow
+- [x] Entry paging + favorites count
+- [x] Search + autocomplete
+- [x] Vote, favorite, follow/block
+- [x] Messages (native inbox + thread + reply)
+- [x] Archive (local saved entries) + settings (theme)
 - [ ] Write/edit/delete entries, drafts
-- [ ] Messages, "kimdir", buddy/block relations
-- [ ] Archive, notifications, widgets
+- [ ] New-message compose to non-correspondents, "kimdir" profiles
+- [ ] "şükela" sort, notifications, widgets
 - [ ] F-Droid flavor: strictly FOSS (no ads/analytics), publish metadata
 
 ## Contributing

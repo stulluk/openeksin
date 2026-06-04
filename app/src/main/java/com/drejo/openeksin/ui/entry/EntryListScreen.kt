@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,8 +31,10 @@ import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -67,6 +71,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drejo.openeksin.data.EksiRepository
 import com.drejo.openeksin.data.SessionManager
+import com.drejo.openeksin.data.local.RelationStore
+import com.drejo.openeksin.data.local.SavedEntry
+import com.drejo.openeksin.data.local.SavedStore
 import com.drejo.openeksin.data.model.Entry
 import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.model.TopicDetail
@@ -159,7 +166,7 @@ fun EntryListScreen(
                     if (s.detail.entries.isEmpty()) {
                         Text("entry bulunamadı", modifier = Modifier.align(Alignment.Center))
                     } else {
-                        EntryList(s.detail.entries, onOpenLink)
+                        EntryList(s.detail.entries, topic.title, onOpenLink)
                     }
 
                 is EntryUiState.Error ->
@@ -214,10 +221,10 @@ private fun PagerBar(
 }
 
 @Composable
-private fun EntryList(entries: List<Entry>, onOpenLink: (String, String) -> Unit) {
+private fun EntryList(entries: List<Entry>, topicTitle: String, onOpenLink: (String, String) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(entries, key = { it.id.ifEmpty { it.hashCode().toString() } }) { entry ->
-            EntryRow(entry, onOpenLink)
+            EntryRow(entry, topicTitle, onOpenLink)
             HorizontalDivider(color = LocalEkColors.current.divider, thickness = 6.dp)
         }
     }
@@ -225,7 +232,7 @@ private fun EntryList(entries: List<Entry>, onOpenLink: (String, String) -> Unit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EntryRow(entry: Entry, onOpenLink: (String, String) -> Unit) {
+private fun EntryRow(entry: Entry, topicTitle: String, onOpenLink: (String, String) -> Unit) {
     val ek = LocalEkColors.current
     var expanded by remember(entry.id) { mutableStateOf(false) }
     var overflow by remember(entry.id) { mutableStateOf(false) }
@@ -331,22 +338,45 @@ private fun EntryRow(entry: Entry, onOpenLink: (String, String) -> Unit) {
     }
 
     if (showMenu) {
-        EntryMenuSheet(entry = entry, onDismiss = { showMenu = false })
+        EntryMenuSheet(entry = entry, topicTitle = topicTitle, onDismiss = { showMenu = false })
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EntryMenuSheet(entry: Entry, onDismiss: () -> Unit) {
+private fun EntryMenuSheet(entry: Entry, topicTitle: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { EksiRepository() }
     val nick by SessionManager.nick.collectAsState()
+    val savedEntries by SavedStore.entries.collectAsState()
+    val relations by RelationStore.state.collectAsState()
     val loggedIn = nick != null
     var isFav by remember(entry.id) { mutableStateOf(entry.isFavorite) }
+    val isSaved = savedEntries.any { it.id == entry.id }
+    val isFollowed = entry.author in relations.buddies
+    val isBlocked = entry.author in relations.blocked
+    val isTitleBlocked = entry.author in relations.blockedTitles
+    var showCompose by remember { mutableStateOf(false) }
     val entryUrl = "${Endpoints.BASE}/entry/${entry.id}"
 
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+
+    if (showCompose) {
+        ComposeMessageDialog(
+            target = entry.author,
+            onDismiss = { showCompose = false },
+            onSend = { text ->
+                showCompose = false
+                onDismiss()
+                scope.launch {
+                    val ok = runCatching { repository.sendNewMessage(entry.author, text, entry.id) }
+                        .getOrDefault(false)
+                    toast(if (ok) "mesaj gönderildi" else "gönderilemedi")
+                }
+            },
+        )
+    }
     fun share() {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -356,7 +386,12 @@ private fun EntryMenuSheet(entry: Entry, onDismiss: () -> Unit) {
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp),
+        ) {
             Text(
                 text = "#${entry.id}",
                 fontWeight = FontWeight.Bold,
@@ -388,12 +423,54 @@ private fun EntryMenuSheet(entry: Entry, onDismiss: () -> Unit) {
                     }
                     onDismiss()
                 }
-                SheetItem(Icons.Filled.MailOutline, "mesaj yolla") { toast("yakında"); onDismiss() }
+                SheetItem(Icons.Filled.MailOutline, "mesaj yolla") { showCompose = true }
                 SheetItem(Icons.Filled.Share, "paylaş") { share(); onDismiss() }
-                SheetItem(Icons.Filled.AddCircle, "takip et") { toast("yakında"); onDismiss() }
-                SheetItem(Icons.Filled.Block, "engelle") { toast("yakında"); onDismiss() }
-                SheetItem(Icons.Filled.Block, "başlıklarını engelle") { toast("yakında"); onDismiss() }
-                SheetItem(Icons.Filled.Save, "kaydet") { toast("yakında"); onDismiss() }
+                SheetItem(Icons.Filled.AddCircle, if (isFollowed) "takibi bırak" else "takip et") {
+                    val add = !isFollowed
+                    scope.launch {
+                        val ok = runCatching {
+                            repository.toggleRelation(entry.authorId, Endpoints.REL_FOLLOW, add)
+                        }.getOrDefault(false)
+                        if (ok) RelationStore.update(entry.author, Endpoints.REL_FOLLOW, add)
+                        toast(if (!ok) "başarısız" else if (add) "${entry.author} takip ediliyor" else "takip bırakıldı")
+                    }
+                    onDismiss()
+                }
+                SheetItem(Icons.Filled.Block, if (isBlocked) "engeli kaldır" else "engelle") {
+                    val add = !isBlocked
+                    scope.launch {
+                        val ok = runCatching {
+                            repository.toggleRelation(entry.authorId, Endpoints.REL_BLOCK, add)
+                        }.getOrDefault(false)
+                        if (ok) RelationStore.update(entry.author, Endpoints.REL_BLOCK, add)
+                        toast(if (!ok) "başarısız" else if (add) "${entry.author} engellendi" else "engel kaldırıldı")
+                    }
+                    onDismiss()
+                }
+                SheetItem(Icons.Filled.Block, if (isTitleBlocked) "başlık engelini kaldır" else "başlıklarını engelle") {
+                    val add = !isTitleBlocked
+                    scope.launch {
+                        val ok = runCatching {
+                            repository.toggleRelation(entry.authorId, Endpoints.REL_BLOCK_TITLE, add)
+                        }.getOrDefault(false)
+                        if (ok) RelationStore.update(entry.author, Endpoints.REL_BLOCK_TITLE, add)
+                        toast(if (!ok) "başarısız" else if (add) "başlıkları engellendi" else "başlık engeli kaldırıldı")
+                    }
+                    onDismiss()
+                }
+                SheetItem(Icons.Filled.Save, if (isSaved) "kayıttan çıkar" else "kaydet") {
+                    val nowSaved = SavedStore.toggle(
+                        SavedEntry(
+                            id = entry.id,
+                            author = entry.author,
+                            date = entry.date,
+                            content = entry.content,
+                            topicTitle = topicTitle,
+                        ),
+                    )
+                    toast(if (nowSaved) "kaydedildi" else "kayıttan çıkarıldı")
+                    onDismiss()
+                }
             } else {
                 SheetItem(Icons.Filled.Share, "paylaş") { share(); onDismiss() }
                 SheetItem(Icons.Filled.OpenInBrowser, "tarayıcıda aç") {
@@ -403,6 +480,38 @@ private fun EntryMenuSheet(entry: Entry, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+fun ComposeMessageDialog(
+    target: String,
+    onDismiss: () -> Unit,
+    onSend: (String) -> Unit,
+    title: String = "mesaj yolla",
+) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("$title: $target") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text("mesajınız") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSend(text.trim()) },
+                enabled = text.isNotBlank(),
+            ) { Text("gönder") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("vazgeç") }
+        },
+    )
 }
 
 @Composable

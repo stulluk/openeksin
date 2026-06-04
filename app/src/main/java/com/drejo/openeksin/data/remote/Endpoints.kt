@@ -22,6 +22,18 @@ object Endpoints {
     const val VOTE = "$BASE/entry/vote"
     const val MESSAGES = "$BASE/mesaj"
     const val EVENTS = "$BASE/basliklar/olay"
+    const val MESSAGE_SEND = "$BASE/mesaj/yolla"
+    const val MESSAGE_SEND_AJAX = "$BASE/mesaj/sendajax"
+    const val RELATION_ADD = "$BASE/userrelation/addrelation/"
+    const val RELATION_REMOVE = "$BASE/userrelation/removerelation/"
+    const val BUDDY_INFO = "$BASE/takip-engellenmis"
+    const val ENTRY = "$BASE/entry/"
+    const val AUTOCOMPLETE = "$BASE/autocomplete/query"
+
+    // user-relation type codes (see decompiled ResponseProcessor)
+    const val REL_FOLLOW = "b"
+    const val REL_BLOCK = "m"
+    const val REL_BLOCK_TITLE = "i"
 
     /** A modern, consistent Chrome-on-Android UA so Cloudflare does not flag us. */
     const val USER_AGENT =

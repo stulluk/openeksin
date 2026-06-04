@@ -43,4 +43,23 @@ object MessageScraper {
             )
         }
     }
+
+    /** The reply form's anti-forgery token and recipient on a thread page. */
+    fun parseReplyForm(html: String): Pair<String?, String?> {
+        val doc = Jsoup.parse(html)
+        val token = doc.selectFirst("form[action=/mesaj/yolla] input[name=__RequestVerificationToken]")
+            ?.attr("value")
+            ?: doc.selectFirst("input[name=__RequestVerificationToken]")?.attr("value")
+        val to = doc.selectFirst("#To")?.attr("value")
+            ?: doc.selectFirst("input[name=To]")?.attr("value")
+        return token to to
+    }
+
+    /** The new-message token from an entry/topic page (#message-send-form). */
+    fun parseSendToken(html: String): String? {
+        val doc = Jsoup.parse(html)
+        return doc.selectFirst("#message-send-form input[name=__RequestVerificationToken]")
+            ?.attr("value")
+            ?: doc.selectFirst("input[name=__RequestVerificationToken]")?.attr("value")
+    }
 }

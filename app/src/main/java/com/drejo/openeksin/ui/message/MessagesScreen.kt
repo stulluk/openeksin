@@ -13,28 +13,36 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.drejo.openeksin.data.EksiRepository
 import com.drejo.openeksin.data.model.Message
 import com.drejo.openeksin.data.model.MessageThread
@@ -136,8 +144,13 @@ private fun ThreadRow(thread: MessageThread, onClick: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val repository = remember { EksiRepository() }
-    val state by produceState<List<Message>?>(null, thread.link) {
+    var refresh by remember { mutableStateOf(0) }
+    var sending by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+    val state by produceState<List<Message>?>(null, thread.link, refresh) {
         value = try {
             repository.messageThread(thread.link)
         } catch (e: Exception) {
@@ -146,23 +159,60 @@ fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit) {
     }
 
     Scaffold(topBar = { MessageTopBar(title = thread.nick, onBack = onBack) }) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            val messages = state
-            when {
-                messages == null ->
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                val messages = state
+                when {
+                    messages == null ->
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
 
-                messages.isEmpty() ->
-                    Text("mesaj yok", modifier = Modifier.align(Alignment.Center))
+                    messages.isEmpty() ->
+                        Text("mesaj yok", modifier = Modifier.align(Alignment.Center))
 
-                else ->
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
-                    ) {
-                        items(messages) { message -> MessageBubble(message) }
-                    }
+                    else ->
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
+                        ) {
+                            items(messages) { message -> MessageBubble(message) }
+                        }
+                }
+            }
+            HorizontalDivider(color = LocalEkColors.current.divider)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    placeholder = { Text("mesaj yaz") },
+                    modifier = Modifier.weight(1f),
+                    enabled = !sending,
+                    maxLines = 4,
+                )
+                IconButton(
+                    onClick = {
+                        val text = draft.trim()
+                        if (text.isEmpty()) return@IconButton
+                        sending = true
+                        scope.launch {
+                            val ok = runCatching { repository.sendReply(thread.link, text) }
+                                .getOrDefault(false)
+                            sending = false
+                            if (ok) {
+                                draft = ""
+                                refresh++
+                            } else {
+                                Toast.makeText(context, "gönderilemedi", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    enabled = !sending && draft.isNotBlank(),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "gönder")
+                }
             }
         }
     }
