@@ -104,6 +104,7 @@ private fun TopicRow(topic: Topic, onClick: () -> Unit) {
         Text(
             text = topic.title,
             fontSize = TextSizes.TopicTitle,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 12.dp),
         )
     }

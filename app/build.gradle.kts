@@ -15,6 +15,17 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        // Stable, checked-in debug key so rebuilds keep the same signature
+        // (reinstall/update without uninstalling, preserving the session).
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     flavorDimensions += "store"
     productFlavors {
         create("play") {

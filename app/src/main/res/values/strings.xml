@@ -2,6 +2,10 @@
 <resources>
     <string name="app_name">openeksin</string>
     <string name="cloudflare_title">doğrulama</string>
+    <string name="login_title">giriş</string>
+    <string name="login">giriş</string>
+    <string name="logout">çıkış</string>
+    <string name="account">hesap</string>
     <string name="tab_today">bugün</string>
     <string name="tab_agenda">gündem</string>
     <string name="tab_popular">debe</string>

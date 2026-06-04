@@ -8,9 +8,14 @@ object Endpoints {
     const val HOST = "eksisozluk.com"
     const val BASE = "https://$HOST"
 
-    const val TODAY = "$BASE/basliklar/bugun"
+    // "bugün" feed. The web /basliklar/bugun is 404 for anonymous users, but the
+    // app feed endpoint /index/feedrefresh returns today's topics without login.
+    const val TODAY = "$BASE/index/feedrefresh"
     const val AGENDA = "$BASE/basliklar/gundem"
     const val DEBE = "$BASE/debe"
+
+    const val LOGIN = "$BASE/giris?returnurl=%2f"
+    const val LOGOUT = "$BASE/cikis"
 
     /** A modern, consistent Chrome-on-Android UA so Cloudflare does not flag us. */
     const val USER_AGENT =

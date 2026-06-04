@@ -15,13 +15,20 @@ local.properties
 /.config/
 /.java/
 
-# Signing
+# Signing (the standard non-secret debug keystore is committed for stable
+# debug signatures; real release keys must never be committed)
 *.keystore
 *.jks
+!keystore/debug.keystore
 
 # APK output
 *.apk
 *.idsig
+
+# Secrets / local credentials (never commit)
+.secrets/
+*.env
+.env*
 
 # OS
 .DS_Store

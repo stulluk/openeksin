@@ -7,12 +7,14 @@ It is inspired by the closed-source "Ekşin" app, but shares **no code or assets
 with it. The goal is a maintained, ad-free, tracker-free reader/writer that other
 people can use and contribute to.
 
-> **Status: early MVP.** The foundation works end-to-end: it fetches and renders
-> the live topic lists from eksisozluk.com, with Cloudflare handling and the
-> original app's visual design (colors, type scale). Many features are still to
-> come — see the roadmap.
+> **Status: working reader.** Browses the live `gündem`, `debe` and `bugün`
+> feeds, opens topics as native entry lists, and supports WebView login — all
+> with Cloudflare handling and the original app's visual design. Many features
+> are still to come — see the roadmap.
 
-![gündem](docs/screenshot_gundem.png)
+Original (left) vs openeksin (right):
+
+![comparison](docs/compare_bugun.png)
 
 ## Why
 
@@ -22,32 +24,45 @@ modern, testable codebase.
 
 ## What works today
 
-- **Topic lists**: `gündem` (popular) and `debe` (yesterday's best) load live.
+- **Topic lists**: `gündem` (popular), `debe` (yesterday's best) and `bugün`
+  (today's topics, via the `/index/feedrefresh` feed) all load live — no login
+  required.
+- **Native entry screen**: tapping a topic opens its entries in-app (author,
+  date, line breaks preserved) — no external browser.
+- **Login**: WebView sign-in (`LoginActivity`) at `/giris`; cookies are shared
+  with okhttp, the nick is detected from the home page, and the session is
+  restored on next launch. Logout clears cookies.
 - **Networking core**: shared okhttp client with a modern Chrome User-Agent and a
   cookie bridge to the WebView (so a Cloudflare `cf_clearance` cookie is reused).
+  List feeds are fetched as AJAX partials (`X-Requested-With: XMLHttpRequest`);
+  full pages (login/nick detection, entries) are fetched normally.
 - **Cloudflare handling**: requests that hit a challenge raise `CloudflareException`;
   the UI can open a WebView (`CloudflareActivity`) to clear it, then retry.
-- **Design system**: colors and text sizes replicated from the original
-  (functional values) for a familiar look. Light + dark.
+- **Design system**: top bar, tab strip, rank badges, colors and text sizes
+  replicated from the original (functional values) for a familiar look. Light + dark.
 - **Two build flavors**: `play` (`com.drejo.openeksin`) and `fdroid`
   (`com.drejo.openeksin.fdroid`) so both can coexist on one device.
 
-`bugün` requires a logged-in session and will light up once auth lands.
+> Note: Cloudflare's Turnstile (the "verify you are human" widget on the login
+> page) blocks emulators, so **login must be done on a real device**. Everything
+> else works on an emulator.
 
 ## Architecture
 
 ```
-ui/            Compose UI (MainActivity, tabs, TopicListScreen, ViewModel)
+ui/            Compose UI + in-app navigation (MainActivity)
+ui/topic/      Topic list screen + ViewModel
+ui/entry/      Native entry-list screen (topic detail)
 ui/theme/      OpeneksinTheme: Color tokens, Typography, dark/light schemes
-data/          EksiRepository, TopicFeed
-data/remote/   EksiClient (okhttp), Endpoints, WebViewCookieJar, CloudflareActivity
-data/scraper/  Jsoup-based parsers (TopicIndexScraper)
-data/model/    Plain data models (Topic, ...)
+data/          EksiRepository, TopicFeed, SessionManager
+data/remote/   EksiClient (okhttp), Endpoints, WebViewCookieJar,
+               CloudflareActivity, LoginActivity
+data/scraper/  Jsoup parsers (TopicIndexScraper, EntryScraper, LoginScraper)
+data/model/    Plain data models (Topic, Entry, TopicDetail)
 ```
 
 Data comes from scraping eksisozluk.com's public HTML (it has no public API), the
-same approach FOSS apps like NewPipe use for other sites. The topic lists are
-fetched as AJAX partials (`X-Requested-With: XMLHttpRequest`).
+same approach FOSS apps like NewPipe use for other sites.
 
 ## Building
 
@@ -69,13 +84,31 @@ Install on a connected device:
 adb install app/build/outputs/apk/play/debug/app-play-debug.apk
 ```
 
+Debug builds are signed with a stable, checked-in debug key
+(`keystore/debug.keystore`), so reinstalling an update keeps the same signature
+and preserves the logged-in session (no uninstall needed).
+
+### Emulator (optional, for testing)
+
+Helper scripts create and run an AVD matching a phone's resolution, with the lock
+screen disabled so the whole UI can be driven over adb:
+
+```bash
+./scripts/emulator_setup.sh   # installs SDK + image, creates the AVD (once)
+./scripts/emulator_run.sh     # boots it headless with KVM
+```
+
+(Login can't be tested here — see the Cloudflare/Turnstile note above.)
+
 Tech stack: Kotlin 1.9, AGP 8.5, Jetpack Compose (BOM 2024.06), okhttp 4, Jsoup,
 Coroutines. minSdk 21, targetSdk 34.
 
 ## Roadmap
 
-- [ ] Topic → entry list screen (read entries, paging, "şükela")
-- [ ] Login (WebView) + session, then `bugün`
+- [x] Topic → native entry list screen
+- [x] Login (WebView) + session
+- [x] `bugün` feed
+- [ ] Entry paging, "şükela" sort, favorites count
 - [ ] Search, autocomplete
 - [ ] Vote, favorite, follow
 - [ ] Write/edit/delete entries, drafts

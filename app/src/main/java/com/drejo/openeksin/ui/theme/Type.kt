@@ -42,6 +42,7 @@ val OpeneksinTypography = Typography(
 object TextSizes {
     val EntryBody = 15.sp
     val EntryAuthor = 14.sp
+    val EntryDate = 12.sp
     val EntryRank = 20.sp
     val TopicTitle = 16.sp
 }

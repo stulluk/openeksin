@@ -30,6 +30,15 @@ object EksiPalette {
     val DarkSecondaryText = Color(0xFFBFBFBF)
     val TopicEmptyDark = Color(0xFF6F6F6F)
 
+    // Top app bar (toolbar) and tab strip, sampled from the original app.
+    val Toolbar = Color(0xFF212121)
+    val TabBar = Color(0xFF000000)
+    val TabSelected = Color(0xFFFFFFFF)
+    val TabUnselected = Color(0xFF9AA0A6)
+
+    // Rank badge in topic lists (slate blue-gray), sampled from the original.
+    val RankBadge = Color(0xFF404F64)
+
     val TabBackground = Color(0xFF222222)
     val TabText = Color(0xFFFFFFFF)
     val White = Color(0xFFFFFFFF)

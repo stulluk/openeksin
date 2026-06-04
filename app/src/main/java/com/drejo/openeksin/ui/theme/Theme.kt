@@ -24,7 +24,7 @@ data class EkColors(
 
 val LocalEkColors = staticCompositionLocalOf {
     EkColors(
-        rankBadge = EksiPalette.BlueBackground,
+        rankBadge = EksiPalette.RankBadge,
         rankBadgeText = EksiPalette.White,
         highlight = EksiPalette.Mark,
         secondaryText = EksiPalette.LightSecondaryText,
@@ -62,7 +62,7 @@ fun OpeneksinTheme(
 ) {
     val colorScheme = if (darkTheme) DarkColors else LightColors
     val ekColors = EkColors(
-        rankBadge = EksiPalette.BlueBackground,
+        rankBadge = EksiPalette.RankBadge,
         rankBadgeText = EksiPalette.White,
         highlight = EksiPalette.Mark,
         secondaryText = if (darkTheme) EksiPalette.DarkSecondaryText else EksiPalette.LightSecondaryText,

@@ -19,9 +19,11 @@ object TopicIndexScraper {
             .ifEmpty { document.select("ul.topic-list li a") }
 
         return anchors.mapNotNull { a ->
-            val count = a.selectFirst("small")?.text().orEmpty()
-            // ownText() yields the title without the nested <small> count.
-            val title = a.ownText().trim()
+            val count = a.selectFirst("small")?.text().orEmpty().trim()
+            // gündem/bugün: title is the anchor's own text + <small> count.
+            // debe: title lives in a nested <span class="caption">.
+            val caption = a.selectFirst("span.caption")?.text()?.trim()
+            val title = (caption ?: a.ownText().trim())
             val link = a.attr("href").trim()
             if (title.isEmpty() || link.isEmpty()) {
                 null

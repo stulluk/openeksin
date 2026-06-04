@@ -24,9 +24,6 @@ object EksiClient {
                     .header("User-Agent", Endpoints.USER_AGENT)
                     .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                     .header("Accept-Language", "tr-TR,tr;q=0.9")
-                    // eksisozluk returns the topic-list as an AJAX partial only
-                    // when this header is present.
-                    .header("X-Requested-With", "XMLHttpRequest")
                     .build()
                 chain.proceed(request)
             }
@@ -37,10 +34,17 @@ object EksiClient {
      * GET [url] and return the body as a string. Throws [CloudflareException] if
      * the response looks like a Cloudflare challenge so the caller can open the
      * WebView to solve it.
+     *
+     * @param ajaxPartial when true, sends `X-Requested-With: XMLHttpRequest`.
+     *   eksisozluk only returns the topic-list fragment with this header; full
+     *   pages (e.g. for login detection) must be fetched without it.
      */
-    fun getHtml(url: String): String {
-        val request = Request.Builder().url(url).get().build()
-        okHttp.newCall(request).execute().use { response: Response ->
+    fun getHtml(url: String, ajaxPartial: Boolean = false): String {
+        val builder = Request.Builder().url(url).get()
+        if (ajaxPartial) {
+            builder.header("X-Requested-With", "XMLHttpRequest")
+        }
+        okHttp.newCall(builder.build()).execute().use { response: Response ->
             val body = response.body?.string().orEmpty()
             if (isCloudflareChallenge(response.code, body)) {
                 throw CloudflareException(url)
