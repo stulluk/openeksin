@@ -4,8 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,48 +18,78 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.drejo.openeksin.data.EksiRepository
+import com.drejo.openeksin.data.Feed
 import com.drejo.openeksin.data.model.Topic
+import com.drejo.openeksin.data.remote.CloudflareException
 import com.drejo.openeksin.ui.theme.LocalEkColors
 import com.drejo.openeksin.ui.theme.TextSizes
+
+sealed interface TopicListUiState {
+    data object Loading : TopicListUiState
+    data class Success(val topics: List<Topic>) : TopicListUiState
+    data class Error(val message: String) : TopicListUiState
+    data class NeedsCloudflare(val challengeUrl: String) : TopicListUiState
+}
+
+/** One pager page: loads and renders a single feed's topic list. */
+@Composable
+fun FeedPage(
+    feed: Feed,
+    reloadKey: Int,
+    onVerifyCloudflare: (String) -> Unit,
+    onTopicClick: (Topic) -> Unit,
+) {
+    val repository = remember { EksiRepository() }
+    val state by produceState<TopicListUiState>(TopicListUiState.Loading, feed.path, reloadKey) {
+        value = TopicListUiState.Loading
+        value = try {
+            TopicListUiState.Success(repository.topics(feed.path))
+        } catch (e: CloudflareException) {
+            TopicListUiState.NeedsCloudflare(e.challengeUrl)
+        } catch (e: Exception) {
+            TopicListUiState.Error(e.message ?: "error")
+        }
+    }
+    TopicListScreen(
+        state = state,
+        onVerifyCloudflare = onVerifyCloudflare,
+        onTopicClick = onTopicClick,
+    )
+}
 
 @Composable
 fun TopicListScreen(
     state: TopicListUiState,
-    onRetry: () -> Unit,
     onVerifyCloudflare: (String) -> Unit,
     onTopicClick: (Topic) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         when (state) {
-            is TopicListUiState.Loading -> {
+            is TopicListUiState.Loading ->
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            }
 
-            is TopicListUiState.Success -> {
+            is TopicListUiState.Success ->
                 TopicList(topics = state.topics, onTopicClick = onTopicClick)
-            }
 
-            is TopicListUiState.Error -> {
-                CenteredMessage(
-                    message = state.message,
-                    actionLabel = "tekrar dene",
-                    onAction = onRetry,
-                )
-            }
+            is TopicListUiState.Error ->
+                CenteredMessage(message = state.message)
 
-            is TopicListUiState.NeedsCloudflare -> {
+            is TopicListUiState.NeedsCloudflare ->
                 CenteredMessage(
                     message = "cloudflare doğrulaması gerekiyor",
                     actionLabel = "doğrula",
                     onAction = { onVerifyCloudflare(state.challengeUrl) },
                 )
-            }
         }
     }
 }
@@ -113,8 +143,8 @@ private fun TopicRow(topic: Topic, onClick: () -> Unit) {
 @Composable
 private fun CenteredMessage(
     message: String,
-    actionLabel: String,
-    onAction: () -> Unit,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -122,8 +152,10 @@ private fun CenteredMessage(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(text = message)
-        Button(onClick = onAction, modifier = Modifier.padding(top = 16.dp)) {
-            Text(text = actionLabel)
+        if (actionLabel != null && onAction != null) {
+            Button(onClick = onAction, modifier = Modifier.padding(top = 16.dp)) {
+                Text(text = actionLabel)
+            }
         }
     }
 }

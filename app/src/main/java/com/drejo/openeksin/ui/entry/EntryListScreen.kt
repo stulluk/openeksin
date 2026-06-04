@@ -1,45 +1,71 @@
 package com.drejo.openeksin.ui.entry
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.drejo.openeksin.data.EksiRepository
 import com.drejo.openeksin.data.model.Entry
 import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.model.TopicDetail
 import com.drejo.openeksin.data.remote.CloudflareException
+import com.drejo.openeksin.data.remote.Endpoints
 import com.drejo.openeksin.ui.theme.EksiPalette
 import com.drejo.openeksin.ui.theme.LocalEkColors
 import com.drejo.openeksin.ui.theme.TextSizes
+
+private const val COLLAPSED_LINES = 8
+private const val URL_TAG = "URL"
 
 private sealed interface EntryUiState {
     data object Loading : EntryUiState
@@ -54,12 +80,15 @@ fun EntryListScreen(
     topic: Topic,
     onBack: () -> Unit,
     onVerifyCloudflare: (String) -> Unit,
+    onOpenLink: (href: String, title: String) -> Unit,
 ) {
     val repository = remember { EksiRepository() }
-    val state by produceState<EntryUiState>(EntryUiState.Loading, topic.link) {
+    var page by remember(topic.link) { mutableIntStateOf(1) }
+
+    val state by produceState<EntryUiState>(EntryUiState.Loading, topic.link, page) {
         value = EntryUiState.Loading
         value = try {
-            EntryUiState.Success(repository.entries(topic.link))
+            EntryUiState.Success(repository.entries(topic.link, page))
         } catch (e: CloudflareException) {
             EntryUiState.NeedsCloudflare(e.challengeUrl)
         } catch (e: Exception) {
@@ -67,31 +96,45 @@ fun EntryListScreen(
         }
     }
 
+    val detail = (state as? EntryUiState.Success)?.detail
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = topic.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "geri",
-                            tint = Color.White,
+            Column {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = topic.title,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 16.sp,
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = EksiPalette.Toolbar,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                ),
-            )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "geri",
+                                tint = Color.White,
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = EksiPalette.Toolbar,
+                        titleContentColor = Color.White,
+                        navigationIconContentColor = Color.White,
+                    ),
+                )
+                if (detail != null && detail.pageCount > 1) {
+                    PagerBar(
+                        current = detail.currentPage,
+                        count = detail.pageCount,
+                        onPrev = { if (page > 1) page-- },
+                        onNext = { if (page < detail.pageCount) page++ },
+                        onLast = { page = detail.pageCount },
+                    )
+                }
+            }
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
@@ -101,12 +144,9 @@ fun EntryListScreen(
 
                 is EntryUiState.Success ->
                     if (s.detail.entries.isEmpty()) {
-                        Text(
-                            text = "entry bulunamadı",
-                            modifier = Modifier.align(Alignment.Center),
-                        )
+                        Text("entry bulunamadı", modifier = Modifier.align(Alignment.Center))
                     } else {
-                        EntryList(s.detail.entries)
+                        EntryList(s.detail.entries, onOpenLink)
                     }
 
                 is EntryUiState.Error ->
@@ -133,43 +173,217 @@ fun EntryListScreen(
 }
 
 @Composable
-private fun EntryList(entries: List<Entry>) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(entries) { entry ->
-            EntryRow(entry)
-            HorizontalDivider(color = LocalEkColors.current.divider)
+private fun PagerBar(
+    current: Int,
+    count: Int,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onLast: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onPrev, enabled = current > 1) {
+            Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "önceki")
+        }
+        Text("$current / $count", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        IconButton(onClick = onNext, enabled = current < count) {
+            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "sonraki")
+        }
+        IconButton(onClick = onLast, enabled = current < count) {
+            Text("»", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-private fun EntryRow(entry: Entry) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-    ) {
-        Text(
-            text = entry.content,
-            fontSize = TextSizes.EntryBody,
-        )
-        Spacer(modifier = Modifier.padding(top = 8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = entry.author,
-                fontSize = TextSizes.EntryAuthor,
-                fontWeight = FontWeight.Bold,
-                color = EksiPalette.Blue,
-            )
-            Text(
-                text = "  ${entry.date}",
-                fontSize = TextSizes.EntryDate,
-                color = LocalEkColors.current.secondaryText,
-            )
+private fun EntryList(entries: List<Entry>, onOpenLink: (String, String) -> Unit) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(entries, key = { it.id.ifEmpty { it.hashCode().toString() } }) { entry ->
+            EntryRow(entry, onOpenLink)
+            HorizontalDivider(color = LocalEkColors.current.divider, thickness = 6.dp)
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EntryRow(entry: Entry, onOpenLink: (String, String) -> Unit) {
+    val ek = LocalEkColors.current
+    var expanded by remember(entry.id) { mutableStateOf(false) }
+    var overflow by remember(entry.id) { mutableStateOf(false) }
+    var fullLines by remember(entry.id) { mutableIntStateOf(0) }
+    var showMenu by remember { mutableStateOf(false) }
+
+    val annotated = remember(entry.id) { buildContent(entry) }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        if (entry.favoriteCount.isNotEmpty() && entry.favoriteCount != "0") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(entry.favoriteCount, fontSize = 13.sp, color = ek.secondaryText)
+                Icon(
+                    imageVector = Icons.Filled.Opacity,
+                    contentDescription = "favori",
+                    tint = ek.secondaryText,
+                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                )
+            }
+        }
+
+        // Hidden measure pass to learn the full line count.
+        if (fullLines == 0) {
+            ClickableText(
+                text = annotated,
+                onClick = {},
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = TextSizes.EntryBody,
+                    color = ek.mainText,
+                ),
+                modifier = Modifier.fillMaxWidth().height(0.dp).clipToBounds().alpha(0f),
+                onTextLayout = { fullLines = it.lineCount },
+            )
+        }
+
+        ClickableText(
+            text = annotated,
+            onClick = { offset ->
+                annotated.getStringAnnotations(URL_TAG, offset, offset).firstOrNull()?.let {
+                    handleLink(it.item, onOpenLink)
+                }
+            },
+            style = androidx.compose.ui.text.TextStyle(
+                fontSize = TextSizes.EntryBody,
+                color = ek.mainText,
+            ),
+            maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_LINES,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { result: TextLayoutResult ->
+                overflow = result.hasVisualOverflow
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (!expanded && (overflow || fullLines > COLLAPSED_LINES)) {
+            val remaining = (fullLines - COLLAPSED_LINES).coerceAtLeast(1)
+            HorizontalDivider(
+                color = ek.divider,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Text(
+                text = "devamını okuyayım… ($remaining satır)",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = ek.secondaryText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = true }
+                    .padding(vertical = 8.dp),
+            )
+        }
+
+        HorizontalDivider(color = ek.divider, modifier = Modifier.padding(top = 10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = entry.author,
+                    fontSize = TextSizes.EntryAuthor,
+                    fontWeight = FontWeight.Bold,
+                    color = EksiPalette.Blue,
+                )
+                Text(
+                    text = entry.date,
+                    fontSize = TextSizes.EntryDate,
+                    color = ek.secondaryText,
+                )
+            }
+            IconButton(onClick = { showMenu = true }, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = "menü",
+                    tint = ek.secondaryText,
+                )
+            }
+        }
+    }
+
+    if (showMenu) {
+        EntryMenuSheet(entry = entry, onDismiss = { showMenu = false })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EntryMenuSheet(entry: Entry, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val entryUrl = "${Endpoints.BASE}/entry/${entry.id}"
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text(
+                text = "#${entry.id}",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+            HorizontalDivider()
+            SheetItem("paylaş") {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, entryUrl)
+                }
+                context.startActivity(Intent.createChooser(send, null))
+                onDismiss()
+            }
+            SheetItem("tarayıcıda aç") {
+                context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(entryUrl)))
+                onDismiss()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetItem(label: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        fontSize = 15.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+    )
+}
+
+private fun buildContent(entry: Entry): AnnotatedString = buildAnnotatedString {
+    for (seg in entry.segments) {
+        if (seg.href.isNullOrEmpty()) {
+            append(seg.text)
+        } else {
+            pushStringAnnotation(URL_TAG, seg.href)
+            withStyle(
+                SpanStyle(
+                    color = EksiPalette.Blue,
+                    textDecoration = TextDecoration.None,
+                ),
+            ) {
+                append(seg.text)
+            }
+            pop()
+        }
+    }
+}
+
+private fun handleLink(href: String, onOpenLink: (String, String) -> Unit) {
+    onOpenLink(href, href.removePrefix("/").substringBefore("--").replace("-", " "))
 }

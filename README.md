@@ -24,11 +24,18 @@ modern, testable codebase.
 
 ## What works today
 
-- **Topic lists**: `gündem` (popular), `debe` (yesterday's best) and `bugün`
-  (today's topics, via the `/index/feedrefresh` feed) all load live — no login
-  required.
-- **Native entry screen**: tapping a topic opens its entries in-app (author,
-  date, line breaks preserved) — no external browser.
+- **Swipeable channel tabs**: `gündem`, `debe`, `bugün`, `tarihte bugün` plus the
+  full dynamic channel list scraped from `/kanallar` (`#spor`, `#siyaset`, …).
+  Tabs are a `ScrollableTabRow` synced to a `HorizontalPager`, so you can swipe
+  left/right between feeds — no login required.
+- **Navigation drawer**: hamburger menu matching the original — `genel`
+  (başlıklar / ara / arşiv / ayarlar) and `yazar` (giriş, or the logged-in nick +
+  çıkış).
+- **Native entry screen**: tapping a topic opens its entries in-app with the
+  original layout — per-entry favorite count, "devamını okuyayım… (N satır)"
+  collapse for long entries, a separator, bold author nick + date, a 3-dot
+  action sheet (paylaş / tarayıcıda aç), inline `(bkz: …)` links, and page
+  navigation (`1 / N`). No external browser.
 - **Login**: WebView sign-in (`LoginActivity`) at `/giris`; cookies are shared
   with okhttp, the nick is detected from the home page, and the session is
   restored on next launch. Logout clears cookies.
@@ -51,7 +58,7 @@ modern, testable codebase.
 
 ```
 ui/            Compose UI + in-app navigation (MainActivity)
-ui/topic/      Topic list screen + ViewModel
+ui/topic/      Topic list + per-feed pager page (FeedPage)
 ui/entry/      Native entry-list screen (topic detail)
 ui/theme/      OpeneksinTheme: Color tokens, Typography, dark/light schemes
 data/          EksiRepository, TopicFeed, SessionManager

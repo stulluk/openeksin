@@ -4,32 +4,39 @@ import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.model.TopicDetail
 import com.drejo.openeksin.data.remote.EksiClient
 import com.drejo.openeksin.data.remote.Endpoints
+import com.drejo.openeksin.data.scraper.ChannelScraper
 import com.drejo.openeksin.data.scraper.EntryScraper
 import com.drejo.openeksin.data.scraper.TopicIndexScraper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Which topic index to load. */
-enum class TopicFeed(val url: String) {
-    AGENDA(Endpoints.AGENDA),
-    DEBE(Endpoints.DEBE),
-    TODAY(Endpoints.TODAY),
-}
-
-/** Read-only data access for the topic-index feeds. */
+/** Read-only data access for topic feeds and entries. */
 class EksiRepository {
 
-    suspend fun topics(feed: TopicFeed): List<Topic> = withContext(Dispatchers.IO) {
-        val html = EksiClient.getHtml(feed.url, ajaxPartial = true)
+    /** Loads a topic-index feed (gündem / debe / bugün / a channel) by URL. */
+    suspend fun topics(path: String): List<Topic> = withContext(Dispatchers.IO) {
+        val html = EksiClient.getHtml(path, ajaxPartial = true)
         TopicIndexScraper.parse(html)
+    }
+
+    /** Loads the channel list for the dynamic tabs. */
+    suspend fun channels(): List<Feed> = withContext(Dispatchers.IO) {
+        ChannelScraper.parse(EksiClient.getHtml(Endpoints.CHANNELS, ajaxPartial = true))
     }
 
     /**
      * Loads a topic page (entries). [path] is a relative link from a [Topic]
      * (e.g. "/baslik--123" or "/entry/456?debe=true") or an absolute URL.
      */
-    suspend fun entries(path: String): TopicDetail = withContext(Dispatchers.IO) {
-        val url = if (path.startsWith("http")) path else Endpoints.BASE + path
+    suspend fun entries(path: String, page: Int = 1): TopicDetail = withContext(Dispatchers.IO) {
+        val base = if (path.startsWith("http")) path else Endpoints.BASE + path
+        val url = if (page <= 1) {
+            base
+        } else if (base.contains("?")) {
+            "$base&p=$page"
+        } else {
+            "$base?p=$page"
+        }
         val html = EksiClient.getHtml(url, ajaxPartial = false)
         EntryScraper.parse(html)
     }

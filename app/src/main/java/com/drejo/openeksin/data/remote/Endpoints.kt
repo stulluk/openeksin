@@ -16,6 +16,7 @@ object Endpoints {
 
     const val LOGIN = "$BASE/giris?returnurl=%2f"
     const val LOGOUT = "$BASE/cikis"
+    const val CHANNELS = "$BASE/kanallar"
 
     /** A modern, consistent Chrome-on-Android UA so Cloudflare does not flag us. */
     const val USER_AGENT =
