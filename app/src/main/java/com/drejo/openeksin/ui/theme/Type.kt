@@ -44,5 +44,6 @@ object TextSizes {
     val EntryAuthor = 14.sp
     val EntryDate = 12.sp
     val EntryRank = 20.sp
-    val TopicTitle = 16.sp
+    val TopicTitle = 15.sp
+    val TopicCount = 15.sp
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -109,26 +110,28 @@ private fun TopicList(topics: List<Topic>, onTopicClick: (Topic) -> Unit) {
 @Composable
 private fun TopicRow(topic: Topic, onClick: () -> Unit) {
     val ek = LocalEkColors.current
+    // Matches topiclist_item_layout.xml: minHeight 50dp, count 40dp @ 8dp margin, title 15sp.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .defaultMinSize(minHeight = 50.dp)
+            .clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (topic.entryCount.isNotEmpty()) {
             Box(
                 modifier = Modifier
-                    .widthIn(min = 36.dp)
+                    .padding(8.dp)
+                    .widthIn(min = 40.dp, max = 40.dp)
+                    .defaultMinSize(minHeight = 34.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(ek.rankBadge)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .background(ek.rankBadge),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = topic.entryCount,
                     color = ek.rankBadgeText,
-                    fontSize = TextSizes.EntryAuthor,
+                    fontSize = TextSizes.TopicCount,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -137,7 +140,10 @@ private fun TopicRow(topic: Topic, onClick: () -> Unit) {
             text = topic.title,
             fontSize = TextSizes.TopicTitle,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 12.dp),
+            maxLines = 2,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 5.dp, top = 5.dp, end = 8.dp, bottom = 5.dp),
         )
     }
 }

@@ -19,15 +19,23 @@ object TopicIndexScraper {
             .ifEmpty { document.select("ul.topic-list li a") }
 
         return anchors.mapNotNull { a ->
-            val count = a.selectFirst("small")?.text().orEmpty().trim()
-            // gündem/bugün: title is the anchor's own text + <small> count.
-            // debe: title lives in a nested <span class="caption">.
+            val childElements = a.children()
+            // debe: title in span.caption, count in span.value.
             val caption = a.selectFirst("span.caption")?.text()?.trim()
-            val title = (caption ?: a.ownText().trim())
+            val ownText = a.ownText().trim()
+            val title = caption ?: ownText
             val link = a.attr("href").trim()
             if (title.isEmpty() || link.isEmpty()) {
                 null
             } else {
+                val count = if (caption != null) {
+                    a.selectFirst("span.value")?.text()?.trim().orEmpty()
+                } else if (childElements.isEmpty()) {
+                    // Index feeds omit <small> when the topic has a single entry.
+                    "1"
+                } else {
+                    childElements.first().text().trim()
+                }
                 Topic(title = title, link = link, entryCount = count)
             }
         }

@@ -145,9 +145,10 @@ Coroutines. minSdk 21, targetSdk 34.
 - [x] Vote, favorite, follow/block
 - [x] Messages (native inbox + thread + reply)
 - [x] Archive (local saved entries) + settings (theme)
-- [ ] Write/edit/delete entries, drafts
+- [x] Write/edit/delete entries, drafts
+- [x] Topic menu: başlıkta ara, şükela sort
 - [ ] New-message compose to non-correspondents, "kimdir" profiles
-- [ ] "şükela" sort, notifications, widgets
+- [ ] Notifications, widgets
 - [ ] F-Droid flavor: strictly FOSS (no ads/analytics), publish metadata
 
 ## Contributing
