@@ -34,7 +34,12 @@ import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.filled.FirstPage
 import androidx.compose.material.icons.filled.LastPage
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
@@ -101,7 +106,7 @@ private sealed interface EntryUiState {
     data class NeedsCloudflare(val challengeUrl: String) : EntryUiState
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun EntryListScreen(
     topic: Topic,
@@ -110,20 +115,18 @@ fun EntryListScreen(
     onOpenLink: (href: String, title: String) -> Unit,
 ) {
     val repository = remember { EksiRepository() }
-    var page by remember(topic.link) { mutableIntStateOf(1) }
+    val scope = rememberCoroutineScope()
+    var pageCount by remember(topic.link) { mutableIntStateOf(1) }
+    val pagerState = rememberPagerState(pageCount = { pageCount.coerceAtLeast(1) })
 
-    val state by produceState<EntryUiState>(EntryUiState.Loading, topic.link, page) {
-        value = EntryUiState.Loading
-        value = try {
-            EntryUiState.Success(repository.entries(topic.link, page))
-        } catch (e: CloudflareException) {
-            EntryUiState.NeedsCloudflare(e.challengeUrl)
-        } catch (e: Exception) {
-            EntryUiState.Error(e.message ?: "error")
+    // Learn total page count from the first fetch (any page response includes it).
+    LaunchedEffect(topic.link) {
+        runCatching { repository.entries(topic.link, 1) }.getOrNull()?.let {
+            pageCount = it.pageCount.coerceAtLeast(1)
         }
     }
 
-    val detail = (state as? EntryUiState.Success)?.detail
+    val currentPage = pagerState.currentPage + 1
 
     Scaffold(
         topBar = {
@@ -152,59 +155,97 @@ fun EntryListScreen(
                         navigationIconContentColor = Color.White,
                     ),
                 )
-                if (detail != null && detail.pageCount > 1) {
+                if (pageCount > 1) {
                     PagerBar(
-                        current = detail.currentPage,
-                        count = detail.pageCount,
-                        onPrev = { if (page > 1) page-- },
-                        onNext = { if (page < detail.pageCount) page++ },
-                        onLast = { page = detail.pageCount },
+                        current = currentPage,
+                        count = pageCount,
+                        onFirst = { scope.launch { pagerState.animateScrollToPage(0) } },
+                        onLast = { scope.launch { pagerState.animateScrollToPage(pageCount - 1) } },
                     )
                 }
             }
         },
     ) { innerPadding ->
-        val listBg = if (androidx.compose.foundation.isSystemInDarkTheme()) {
+        val listBg = if (isSystemInDarkTheme()) {
             EksiPalette.DarkBackground
         } else {
             EksiPalette.LightEntryListBackground
         }
-        Box(
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .background(listBg),
-        ) {
-            when (val s = state) {
-                is EntryUiState.Loading ->
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            beyondBoundsPageCount = 1,
+            userScrollEnabled = pageCount > 1,
+        ) { pageIndex ->
+            EntryPage(
+                topic = topic,
+                page = pageIndex + 1,
+                repository = repository,
+                onVerifyCloudflare = onVerifyCloudflare,
+                onOpenLink = onOpenLink,
+                onPageCount = { count -> if (count > 0) pageCount = count },
+            )
+        }
+    }
+}
 
-                is EntryUiState.Success ->
-                    if (s.detail.entries.isEmpty()) {
-                        Text("entry bulunamadı", modifier = Modifier.align(Alignment.Center))
-                    } else {
-                        EntryList(s.detail.entries, topic.title, onOpenLink)
-                    }
+@Composable
+private fun EntryPage(
+    topic: Topic,
+    page: Int,
+    repository: EksiRepository,
+    onVerifyCloudflare: (String) -> Unit,
+    onOpenLink: (String, String) -> Unit,
+    onPageCount: (Int) -> Unit,
+) {
+    val state by produceState<EntryUiState>(EntryUiState.Loading, topic.link, page) {
+        value = EntryUiState.Loading
+        value = try {
+            EntryUiState.Success(repository.entries(topic.link, page))
+        } catch (e: CloudflareException) {
+            EntryUiState.NeedsCloudflare(e.challengeUrl)
+        } catch (e: Exception) {
+            EntryUiState.Error(e.message ?: "error")
+        }
+    }
 
-                is EntryUiState.Error ->
-                    Text(
-                        text = s.message,
-                        modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                    )
+    LaunchedEffect((state as? EntryUiState.Success)?.detail?.pageCount) {
+        (state as? EntryUiState.Success)?.detail?.pageCount?.let { onPageCount(it) }
+    }
 
-                is EntryUiState.NeedsCloudflare ->
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Text("cloudflare doğrulaması gerekiyor")
-                        Button(
-                            onClick = { onVerifyCloudflare(s.challengeUrl) },
-                            modifier = Modifier.padding(top = 16.dp),
-                        ) { Text("doğrula") }
-                    }
-            }
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (val s = state) {
+            is EntryUiState.Loading ->
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+
+            is EntryUiState.Success ->
+                if (s.detail.entries.isEmpty()) {
+                    Text("entry bulunamadı", modifier = Modifier.align(Alignment.Center))
+                } else {
+                    EntryList(s.detail.entries, topic.title, onOpenLink)
+                }
+
+            is EntryUiState.Error ->
+                Text(
+                    text = s.message,
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                )
+
+            is EntryUiState.NeedsCloudflare ->
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("cloudflare doğrulaması gerekiyor")
+                    Button(
+                        onClick = { onVerifyCloudflare(s.challengeUrl) },
+                        modifier = Modifier.padding(top = 16.dp),
+                    ) { Text("doğrula") }
+                }
         }
     }
 }
@@ -213,8 +254,7 @@ fun EntryListScreen(
 private fun PagerBar(
     current: Int,
     count: Int,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
+    onFirst: () -> Unit,
     onLast: () -> Unit,
 ) {
     Row(
@@ -224,6 +264,17 @@ private fun PagerBar(
             .height(48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (current > 1) {
+            IconButton(onClick = onFirst, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    Icons.Filled.FirstPage,
+                    contentDescription = "ilk sayfa",
+                    tint = EksiPalette.TabSelected,
+                )
+            }
+        } else {
+            Box(modifier = Modifier.size(48.dp))
+        }
         Box(
             modifier = Modifier.weight(1f),
             contentAlignment = Alignment.Center,
@@ -235,20 +286,19 @@ private fun PagerBar(
                 color = EksiPalette.TabSelected,
                 modifier = Modifier
                     .border(1.dp, Color(0xFF666666), RoundedCornerShape(2.dp))
-                    .clickable { /* page picker — swipe / future dialog */ }
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
-        IconButton(
-            onClick = onLast,
-            enabled = current < count,
-            modifier = Modifier.size(48.dp),
-        ) {
-            Icon(
-                Icons.Filled.LastPage,
-                contentDescription = "son sayfa",
-                tint = EksiPalette.TabSelected,
-            )
+        if (current < count) {
+            IconButton(onClick = onLast, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    Icons.Filled.LastPage,
+                    contentDescription = "son sayfa",
+                    tint = EksiPalette.TabSelected,
+                )
+            }
+        } else {
+            Box(modifier = Modifier.size(48.dp))
         }
     }
 }
