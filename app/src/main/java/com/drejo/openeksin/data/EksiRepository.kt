@@ -110,6 +110,28 @@ class EksiRepository {
             ).first
         }
 
+    /**
+     * Runs a conversation action ("delete" or "archive") on a thread. Eksi has no
+     * single-message delete — only whole-conversation delete via
+     * /mesaj/processthread. Scrapes the form's token + composite threadId first.
+     */
+    suspend fun processThread(threadLink: String, action: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val url = if (threadLink.startsWith("http")) threadLink else Endpoints.BASE + threadLink
+            val html = EksiClient.getHtml(url, ajaxPartial = false)
+            val form = org.jsoup.Jsoup.parse(html).selectFirst("#message-thread-form")
+                ?: return@withContext false
+            val token = form.selectFirst("input[name=__RequestVerificationToken]")?.attr("value")
+            val threadId = form.selectFirst("input[name=threadId]")?.attr("value")
+            if (token.isNullOrEmpty() || threadId.isNullOrEmpty()) return@withContext false
+            EksiClient.postFormResult(
+                "${Endpoints.BASE}/mesaj/processthread",
+                mapOf("__RequestVerificationToken" to token, "threadId" to threadId, "action" to action),
+                ajax = false,
+                referer = url,
+            ).first
+        }
+
     /** Returns topic-title suggestions for [query] via the autocomplete endpoint. */
     suspend fun searchTitles(query: String): List<String> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()

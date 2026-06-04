@@ -132,6 +132,7 @@ private fun AppRoot() {
     fun navigate(screen: Screen) { backStack.add(screen) }
     fun back() { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
     var reloadKey by remember { mutableIntStateOf(0) }
+    var messagesReload by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) { SessionManager.refresh() }
 
@@ -198,9 +199,14 @@ private fun AppRoot() {
         Screen.Messages -> MessagesScreen(
             onBack = { back() },
             onOpenThread = { navigate(Screen.Thread(it)) },
+            reloadKey = messagesReload,
         )
 
-        is Screen.Thread -> MessageThreadScreen(thread = current.thread, onBack = { back() })
+        is Screen.Thread -> MessageThreadScreen(
+            thread = current.thread,
+            onBack = { back() },
+            onDeleted = { messagesReload++; back() },
+        )
 
         is Screen.FeedScreen -> StandaloneFeedScreen(
             feed = current.feed,

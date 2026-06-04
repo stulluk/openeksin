@@ -42,7 +42,9 @@ modern, testable codebase.
   count badge, preview, date) and tapping a row shows the conversation as native
   chat bubbles. A reply box at the bottom sends messages (scrapes the
   anti-forgery token from the thread, posts to `/mesaj/yolla`) — verified
-  on-device.
+  on-device. The thread top bar has a **konuşmayı sil** action (eksi only
+  supports whole-conversation delete via `/mesaj/processthread`, not
+  single-message delete); the inbox refreshes after a delete.
 - **Olaylar (native)**: opens `/basliklar/olay` as a native topic feed.
 - **Native entry screen**: tapping a topic opens its entries in-app with the
   original layout — per-entry favorite count, "devamını okuyayım… (N satır)"

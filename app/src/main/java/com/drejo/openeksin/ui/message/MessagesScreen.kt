@@ -17,6 +17,8 @@ import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -25,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -57,9 +60,9 @@ private sealed interface InboxState {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MessagesScreen(onBack: () -> Unit, onOpenThread: (MessageThread) -> Unit) {
+fun MessagesScreen(onBack: () -> Unit, onOpenThread: (MessageThread) -> Unit, reloadKey: Int = 0) {
     val repository = remember { EksiRepository() }
-    val state by produceState<InboxState>(InboxState.Loading) {
+    val state by produceState<InboxState>(InboxState.Loading, reloadKey) {
         value = try {
             InboxState.Success(repository.messages())
         } catch (e: Exception) {
@@ -143,13 +146,38 @@ private fun ThreadRow(thread: MessageThread, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit) {
+fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit, onDeleted: () -> Unit = onBack) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { EksiRepository() }
     var refresh by remember { mutableStateOf(0) }
     var sending by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("konuşmayı sil") },
+            text = { Text("${thread.nick} ile olan tüm mesajlaşma silinsin mi? bu işlem geri alınamaz.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    scope.launch {
+                        val ok = runCatching { repository.processThread(thread.link, "delete") }
+                            .getOrDefault(false)
+                        if (ok) {
+                            Toast.makeText(context, "konuşma silindi", Toast.LENGTH_SHORT).show()
+                            onDeleted()
+                        } else {
+                            Toast.makeText(context, "silinemedi", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) { Text("sil") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("vazgeç") } },
+        )
+    }
     val state by produceState<List<Message>?>(null, thread.link, refresh) {
         value = try {
             repository.messageThread(thread.link)
@@ -158,7 +186,15 @@ fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit) {
         }
     }
 
-    Scaffold(topBar = { MessageTopBar(title = thread.nick, onBack = onBack) }) { padding ->
+    Scaffold(
+        topBar = {
+            MessageTopBar(title = thread.nick, onBack = onBack, actions = {
+                IconButton(onClick = { confirmDelete = true }) {
+                    Icon(Icons.Filled.Delete, contentDescription = "konuşmayı sil", tint = Color.White)
+                }
+            })
+        },
+    ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 val messages = state
@@ -249,7 +285,11 @@ private fun MessageBubble(message: Message) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MessageTopBar(title: String, onBack: () -> Unit) {
+private fun MessageTopBar(
+    title: String,
+    onBack: () -> Unit,
+    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
+) {
     TopAppBar(
         title = { Text(title) },
         navigationIcon = {
@@ -257,6 +297,7 @@ private fun MessageTopBar(title: String, onBack: () -> Unit) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "geri", tint = Color.White)
             }
         },
+        actions = actions,
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = EksiPalette.Toolbar,
             titleContentColor = Color.White,
