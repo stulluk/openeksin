@@ -2,6 +2,8 @@ package com.drejo.openeksin.ui.entry
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,8 +26,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.MoreVert
@@ -31,6 +33,10 @@ import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.LastPage
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,6 +69,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -157,7 +164,17 @@ fun EntryListScreen(
             }
         },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        val listBg = if (androidx.compose.foundation.isSystemInDarkTheme()) {
+            EksiPalette.DarkBackground
+        } else {
+            EksiPalette.LightEntryListBackground
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(listBg),
+        ) {
             when (val s = state) {
                 is EntryUiState.Loading ->
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -203,29 +220,47 @@ private fun PagerBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp),
-        horizontalArrangement = Arrangement.Center,
+            .background(EksiPalette.TabBar)
+            .height(48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onPrev, enabled = current > 1) {
-            Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "önceki")
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "$current / $count",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = EksiPalette.TabSelected,
+                modifier = Modifier
+                    .border(1.dp, Color(0xFF666666), RoundedCornerShape(2.dp))
+                    .clickable { /* page picker — swipe / future dialog */ }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
         }
-        Text("$current / $count", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        IconButton(onClick = onNext, enabled = current < count) {
-            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "sonraki")
-        }
-        IconButton(onClick = onLast, enabled = current < count) {
-            Text("»", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        IconButton(
+            onClick = onLast,
+            enabled = current < count,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(
+                Icons.Filled.LastPage,
+                contentDescription = "son sayfa",
+                tint = EksiPalette.TabSelected,
+            )
         }
     }
 }
 
 @Composable
 private fun EntryList(entries: List<Entry>, topicTitle: String, onOpenLink: (String, String) -> Unit) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 4.dp, bottom = 8.dp),
+    ) {
         items(entries, key = { it.id.ifEmpty { it.hashCode().toString() } }) { entry ->
             EntryRow(entry, topicTitle, onOpenLink)
-            HorizontalDivider(color = LocalEkColors.current.divider, thickness = 6.dp)
         }
     }
 }
@@ -234,6 +269,8 @@ private fun EntryList(entries: List<Entry>, topicTitle: String, onOpenLink: (Str
 @Composable
 private fun EntryRow(entry: Entry, topicTitle: String, onOpenLink: (String, String) -> Unit) {
     val ek = LocalEkColors.current
+    val dark = isSystemInDarkTheme()
+    val cardBg = if (dark) EksiPalette.DarkSurface else EksiPalette.LightBackground
     var expanded by remember(entry.id) { mutableStateOf(false) }
     var overflow by remember(entry.id) { mutableStateOf(false) }
     var fullLines by remember(entry.id) { mutableIntStateOf(0) }
@@ -241,98 +278,119 @@ private fun EntryRow(entry: Entry, topicTitle: String, onOpenLink: (String, Stri
 
     val annotated = remember(entry.id) { buildContent(entry) }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-        if (entry.favoriteCount.isNotEmpty() && entry.favoriteCount != "0") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(entry.favoriteCount, fontSize = 13.sp, color = ek.secondaryText)
-                Icon(
-                    imageVector = Icons.Filled.Opacity,
-                    contentDescription = "favori",
-                    tint = ek.secondaryText,
-                    modifier = Modifier.padding(start = 4.dp).size(16.dp),
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 5.dp, end = 5.dp, bottom = 5.dp),
+        shape = RoundedCornerShape(4.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            if (entry.favoriteCount.isNotEmpty() && entry.favoriteCount != "0") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 30.dp)
+                        .padding(5.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        entry.favoriteCount,
+                        fontSize = TextSizes.EntryAuthor,
+                        color = EksiPalette.LightSecondaryText,
+                        fontFamily = FontFamily.SansSerif,
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.Opacity,
+                        contentDescription = "favori",
+                        tint = EksiPalette.LightSecondaryText,
+                        modifier = Modifier.padding(start = 5.dp).size(20.dp),
+                    )
+                }
+            }
+
+            HorizontalDivider(color = ek.divider, thickness = 1.dp)
+
+            // Hidden measure pass to learn the full line count.
+            if (fullLines == 0) {
+                ClickableText(
+                    text = annotated,
+                    onClick = {},
+                    style = androidx.compose.ui.text.TextStyle(
+                        fontSize = TextSizes.EntryBody,
+                        color = ek.mainText,
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(0.dp).clipToBounds().alpha(0f),
+                    onTextLayout = { fullLines = it.lineCount },
                 )
             }
-        }
 
-        // Hidden measure pass to learn the full line count.
-        if (fullLines == 0) {
             ClickableText(
                 text = annotated,
-                onClick = {},
+                onClick = { offset ->
+                    annotated.getStringAnnotations(URL_TAG, offset, offset).firstOrNull()?.let {
+                        handleLink(it.item, onOpenLink)
+                    }
+                },
                 style = androidx.compose.ui.text.TextStyle(
                     fontSize = TextSizes.EntryBody,
                     color = ek.mainText,
                 ),
-                modifier = Modifier.fillMaxWidth().height(0.dp).clipToBounds().alpha(0f),
-                onTextLayout = { fullLines = it.lineCount },
-            )
-        }
-
-        ClickableText(
-            text = annotated,
-            onClick = { offset ->
-                annotated.getStringAnnotations(URL_TAG, offset, offset).firstOrNull()?.let {
-                    handleLink(it.item, onOpenLink)
-                }
-            },
-            style = androidx.compose.ui.text.TextStyle(
-                fontSize = TextSizes.EntryBody,
-                color = ek.mainText,
-            ),
-            maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_LINES,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { result: TextLayoutResult ->
-                overflow = result.hasVisualOverflow
-            },
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        if (!expanded && (overflow || fullLines > COLLAPSED_LINES)) {
-            val remaining = (fullLines - COLLAPSED_LINES).coerceAtLeast(1)
-            HorizontalDivider(
-                color = ek.divider,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            Text(
-                text = "devamını okuyayım… ($remaining satır)",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = ek.secondaryText,
+                maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_LINES,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { result: TextLayoutResult ->
+                    overflow = result.hasVisualOverflow
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = true }
-                    .padding(vertical = 8.dp),
+                    .padding(5.dp),
             )
-        }
 
-        HorizontalDivider(color = ek.divider, modifier = Modifier.padding(top = 10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+            if (!expanded && (overflow || fullLines > COLLAPSED_LINES)) {
+                val remaining = (fullLines - COLLAPSED_LINES).coerceAtLeast(1)
+                HorizontalDivider(color = ek.divider, thickness = 1.dp)
                 Text(
-                    text = entry.author,
+                    text = "devamını okuyayım… ($remaining satır)",
                     fontSize = TextSizes.EntryAuthor,
                     fontWeight = FontWeight.Bold,
-                    color = EksiPalette.Blue,
-                )
-                Text(
-                    text = entry.date,
-                    fontSize = TextSizes.EntryDate,
-                    color = ek.secondaryText,
+                    color = EksiPalette.LightReadMore,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expanded = true }
+                        .padding(horizontal = 5.dp, vertical = 4.dp),
                 )
             }
-            IconButton(onClick = { showMenu = true }, modifier = Modifier.size(28.dp)) {
-                Icon(
-                    Icons.Filled.MoreVert,
-                    contentDescription = "menü",
-                    tint = ek.secondaryText,
-                )
+
+            HorizontalDivider(color = ek.divider, thickness = 1.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 5.dp, end = 5.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = entry.author,
+                        fontSize = TextSizes.EntryAuthor,
+                        fontWeight = FontWeight.Bold,
+                        color = ek.mainText,
+                    )
+                    Text(
+                        text = entry.date,
+                        fontSize = TextSizes.EntryAuthor,
+                        color = ek.mainText,
+                    )
+                }
+                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = "menü",
+                        tint = ek.secondaryText,
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
             }
         }
     }
@@ -538,9 +596,11 @@ private fun buildContent(entry: Entry): AnnotatedString = buildAnnotatedString {
             append(seg.text)
         } else {
             pushStringAnnotation(URL_TAG, seg.href)
+            val external = seg.href.startsWith("http")
             withStyle(
                 SpanStyle(
-                    color = EksiPalette.Blue,
+                    color = if (external) Color(0xFF559CB4) else Color(0xFF177DB4),
+                    fontWeight = if (external) FontWeight.Normal else FontWeight.Bold,
                     textDecoration = TextDecoration.None,
                 ),
             ) {
