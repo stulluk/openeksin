@@ -63,6 +63,18 @@ object EntryScraper {
                 merged.add(seg)
             }
         }
+        // Trim leading/trailing whitespace so entries don't render with the
+        // source HTML's indentation (eksi wraps content with newlines + spaces).
+        while (merged.isNotEmpty() && merged.first().href == null) {
+            val trimmed = merged.first().text.trimStart()
+            if (trimmed.isEmpty()) merged.removeAt(0)
+            else { merged[0] = merged.first().copy(text = trimmed); break }
+        }
+        while (merged.isNotEmpty() && merged.last().href == null) {
+            val trimmed = merged.last().text.trimEnd()
+            if (trimmed.isEmpty()) merged.removeAt(merged.lastIndex)
+            else { merged[merged.lastIndex] = merged.last().copy(text = trimmed); break }
+        }
         return merged
     }
 
