@@ -8,7 +8,7 @@ import java.io.File
 
 /**
  * Debug-only helper: fills the eksisozluk login WebView after Turnstile succeeds.
- * Credentials are pushed once via [scripts/waydroid_login.sh] as files/debug_login.json.
+ * Credentials may be pushed to files/debug_login.json on debug builds for local testing.
  */
 object DebugLoginInjector {
 

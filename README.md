@@ -71,8 +71,7 @@ modern, testable codebase.
   (`com.drejo.openeksin.fdroid`) so both can coexist on one device.
 
 > Note: Cloudflare's Turnstile (the "verify you are human" widget on the login
-> page) blocks emulators, so **login must be done on a real device**. Everything
-> else works on an emulator.
+> page) blocks automated browsers, so **login must be done on a real device**.
 
 ## Architecture
 
@@ -119,18 +118,6 @@ adb install app/build/outputs/apk/play/debug/app-play-debug.apk
 Debug builds are signed with a stable, checked-in debug key
 (`keystore/debug.keystore`), so reinstalling an update keeps the same signature
 and preserves the logged-in session (no uninstall needed).
-
-### Emulator (optional, for testing)
-
-Helper scripts create and run an AVD matching a phone's resolution, with the lock
-screen disabled so the whole UI can be driven over adb:
-
-```bash
-./scripts/emulator_setup.sh   # installs SDK + image, creates the AVD (once)
-./scripts/emulator_run.sh     # boots it headless with KVM
-```
-
-(Login can't be tested here — see the Cloudflare/Turnstile note above.)
 
 Tech stack: Kotlin 1.9, AGP 8.5, Jetpack Compose (BOM 2024.06), okhttp 4, Jsoup,
 Coroutines. minSdk 21, targetSdk 34.

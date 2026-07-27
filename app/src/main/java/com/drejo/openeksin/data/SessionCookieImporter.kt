@@ -7,8 +7,8 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Debug-only helper: applies eksisozluk cookies pushed from a logged-in phone
- * via [scripts/sync_session_phone_to_emulator.sh]. The raw WebView Cookies DB
+ * Debug-only helper: applies eksisozluk cookies from files/import_session.json
+ * (push via adb run-as on a debug build). The raw WebView Cookies DB
  * cannot be copied across devices reliably; [CookieManager.setCookie] is required.
  */
 object SessionCookieImporter {

@@ -35,3 +35,5 @@ local.properties
 
 # Root-level working screenshots (curated copies live in docs/)
 /screenshot_*.png
+/test-screenshots/
+/test_screenshots/

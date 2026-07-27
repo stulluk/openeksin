@@ -80,4 +80,4 @@ if not any(c["name"] == "a" for c in cookies):
     raise SystemExit("no auth cookie 'a' — login failed")
 PY
 
-echo "Done. Import with: ./scripts/import_cookies_to_waydroid.sh"
+echo "Done. Push to phone: cat .secrets/import_session.json | adb shell \"run-as com.drejo.openeksin sh -c 'cat > files/import_session.json'\""

@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
  * Cloudflare interstitial. The actual session is verified afterwards by
  * SessionManager.refresh().
  *
- * Debug builds may push files/debug_login.json (see scripts/waydroid_login.sh)
+ * Debug builds may use files/debug_login.json for automated login during development.
  * to auto-fill the form once Turnstile succeeds.
  */
 class LoginActivity : Activity() {
