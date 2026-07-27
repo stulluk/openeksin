@@ -14,22 +14,30 @@ import androidx.compose.ui.graphics.Color
  * needed to reproduce the original look (drawer, rank badge, highlight, etc.).
  */
 data class EkColors(
+    val isDark: Boolean,
     val rankBadge: Color,
     val rankBadgeText: Color,
     val highlight: Color,
     val mainText: Color,
     val secondaryText: Color,
+    val readMore: Color,
+    val entryCardBg: Color,
+    val entryListBg: Color,
     val divider: Color,
     val drawerBackground: Color,
 )
 
 val LocalEkColors = staticCompositionLocalOf {
     EkColors(
+        isDark = false,
         rankBadge = EksiPalette.RankBadge,
         rankBadgeText = EksiPalette.White,
         highlight = EksiPalette.Mark,
         mainText = EksiPalette.LightMainText,
         secondaryText = EksiPalette.LightSecondaryText,
+        readMore = EksiPalette.LightReadMore,
+        entryCardBg = EksiPalette.LightBackground,
+        entryListBg = EksiPalette.LightEntryListBackground,
         divider = Color(0xFFDDDDDD),
         drawerBackground = EksiPalette.DrawerBackground,
     )
@@ -64,11 +72,15 @@ fun OpeneksinTheme(
 ) {
     val colorScheme = if (darkTheme) DarkColors else LightColors
     val ekColors = EkColors(
+        isDark = darkTheme,
         rankBadge = EksiPalette.RankBadge,
         rankBadgeText = EksiPalette.White,
         highlight = EksiPalette.Mark,
         mainText = if (darkTheme) EksiPalette.DarkMainText else EksiPalette.LightMainText,
         secondaryText = if (darkTheme) EksiPalette.DarkSecondaryText else EksiPalette.LightSecondaryText,
+        readMore = if (darkTheme) EksiPalette.DarkSecondaryText else EksiPalette.LightReadMore,
+        entryCardBg = if (darkTheme) EksiPalette.DarkSurface else EksiPalette.LightBackground,
+        entryListBg = if (darkTheme) EksiPalette.DarkBackground else EksiPalette.LightEntryListBackground,
         divider = if (darkTheme) Color(0xFF333333) else Color(0xFFDDDDDD),
         drawerBackground = EksiPalette.DrawerBackground,
     )

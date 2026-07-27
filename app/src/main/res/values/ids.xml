@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="tag_scroll_page" type="id" />
+    <item name="tag_can_go_prev" type="id" />
+    <item name="tag_can_go_next" type="id" />
+    <item name="tag_on_prev" type="id" />
+    <item name="tag_on_next" type="id" />
+    <item name="tag_on_near_end" type="id" />
+    <item name="tag_entry_link_click" type="id" />
+</resources>

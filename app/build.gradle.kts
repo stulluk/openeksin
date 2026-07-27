@@ -40,8 +40,9 @@ android {
         }
     }
 
-    buildTypes {
+        buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -92,4 +93,5 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.jsoup)
     implementation(libs.kotlinx.coroutines.android)
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
 }

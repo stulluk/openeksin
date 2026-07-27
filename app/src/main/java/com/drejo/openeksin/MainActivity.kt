@@ -79,6 +79,7 @@ import com.drejo.openeksin.ui.entry.EntryComposeScreen
 import com.drejo.openeksin.ui.entry.EntryListScreen
 import com.drejo.openeksin.ui.message.MessageThreadScreen
 import com.drejo.openeksin.ui.message.MessagesScreen
+import com.drejo.openeksin.ui.profile.AuthorEntriesScreen
 import com.drejo.openeksin.ui.misc.ArchiveScreen
 import com.drejo.openeksin.ui.misc.SearchScreen
 import com.drejo.openeksin.ui.misc.SettingsScreen
@@ -87,6 +88,7 @@ import com.drejo.openeksin.ui.theme.OpeneksinTheme
 import com.drejo.openeksin.ui.topic.FeedPage
 import com.drejo.openeksin.ui.topic.FeedTabRow
 import com.drejo.openeksin.ui.topic.StandaloneFeedScreen
+import com.drejo.openeksin.util.PerfTrace
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -120,6 +122,7 @@ private sealed interface Screen {
     data object Search : Screen
     data object Archive : Screen
     data object Settings : Screen
+    data class AuthorEntries(val nick: String, val tabIndex: Int = 0) : Screen
 }
 
 @Composable
@@ -128,6 +131,7 @@ private fun AppRoot() {
     val scope = rememberCoroutineScope()
 
     val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val repository = remember { EksiRepository() }
     fun navigate(screen: Screen) { backStack.add(screen) }
     fun back() { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
     var reloadKey by remember { mutableIntStateOf(0) }
@@ -157,15 +161,25 @@ private fun AppRoot() {
                 .putExtra(CloudflareActivity.EXTRA_URL, url),
         )
     }
-    val onTopicClick: (Topic) -> Unit = { navigate(Screen.Entries(it)) }
+    val onTopicClick: (Topic) -> Unit = { topic ->
+        PerfTrace.markTopicTap(topic.link)
+        scope.launch { repository.prefetchEntries(topic.link, 1) }
+        navigate(Screen.Entries(topic))
+    }
     val onOpenLink: (String, String) -> Unit = { href, title ->
         val isTopic = href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/?")
         if (isTopic) {
+            PerfTrace.markTopicTap(href)
+            scope.launch { repository.prefetchEntries(href, 1) }
             navigate(Screen.Entries(Topic(title = title, link = href, entryCount = "")))
         } else {
             val url = if (href.startsWith("http")) href else Endpoints.BASE + href
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }
+    }
+
+    val onOpenAuthor: (String) -> Unit = { nick ->
+        navigate(Screen.AuthorEntries(nick))
     }
 
     BackHandler(enabled = backStack.size > 1) { back() }
@@ -186,6 +200,7 @@ private fun AppRoot() {
             onOpenSearch = { navigate(Screen.Search) },
             onOpenArchive = { navigate(Screen.Archive) },
             onOpenSettings = { navigate(Screen.Settings) },
+            onOpenAuthor = onOpenAuthor,
         )
 
         is Screen.Entries -> EntryListScreen(
@@ -194,6 +209,7 @@ private fun AppRoot() {
             onBack = { back() },
             onVerifyCloudflare = onVerifyCloudflare,
             onOpenLink = onOpenLink,
+            onOpenAuthor = onOpenAuthor,
             onCompose = { topic, draft, entryId ->
                 navigate(Screen.Compose(topic, draft, entryId))
             },
@@ -235,6 +251,19 @@ private fun AppRoot() {
         Screen.Archive -> ArchiveScreen(onBack = { back() }, onOpenTopic = onTopicClick)
 
         Screen.Settings -> SettingsScreen(onBack = { back() })
+
+        is Screen.AuthorEntries -> AuthorEntriesScreen(
+            nick = current.nick,
+            selectedTab = current.tabIndex,
+            onTabChange = { tab ->
+                val i = backStack.lastIndex
+                if (backStack[i] is Screen.AuthorEntries) {
+                    backStack[i] = Screen.AuthorEntries(current.nick, tab)
+                }
+            },
+            onBack = { back() },
+            onOpenTopic = onTopicClick,
+        )
     }
 }
 
@@ -251,6 +280,7 @@ private fun HomeScreen(
     onOpenSearch: () -> Unit,
     onOpenArchive: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAuthor: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val nick by SessionManager.nick.collectAsState()
@@ -280,6 +310,7 @@ private fun HomeScreen(
                 onOpenSearch = onOpenSearch,
                 onOpenArchive = onOpenArchive,
                 onOpenSettings = onOpenSettings,
+                onOpenAuthor = onOpenAuthor,
             )
         },
     ) {
@@ -314,7 +345,7 @@ private fun HomeScreen(
                     feeds = feeds,
                     selectedIndex = pagerState.currentPage,
                     onTabSelected = { index ->
-                        scope.launch { pagerState.animateScrollToPage(index) }
+                        scope.launch { pagerState.scrollToPage(index) }
                     },
                 )
                 HorizontalPager(
@@ -346,6 +377,7 @@ private fun DrawerContent(
     onOpenSearch: () -> Unit,
     onOpenArchive: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAuthor: (String) -> Unit,
 ) {
     ModalDrawerSheet(drawerContainerColor = EksiPalette.DrawerBackground) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -372,7 +404,7 @@ private fun DrawerContent(
             if (nick == null) {
                 DrawerItem(Icons.Filled.Person, "giriş") { onClose(); onLogin() }
             } else {
-                DrawerItem(Icons.Filled.Person, nick) { onClose() }
+                DrawerItem(Icons.Filled.Person, nick) { onClose(); onOpenAuthor(nick) }
                 DrawerItem(Icons.Filled.MailOutline, "mesajlar") { onClose(); onOpenMessages() }
                 DrawerItem(Icons.Filled.DateRange, "olaylar") {
                     onClose(); onOpenFeed(Feed("olaylar", Endpoints.EVENTS))

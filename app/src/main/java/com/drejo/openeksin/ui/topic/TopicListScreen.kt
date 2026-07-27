@@ -1,38 +1,30 @@
 package com.drejo.openeksin.ui.topic
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.drejo.openeksin.data.EksiRepository
 import com.drejo.openeksin.data.Feed
 import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.remote.CloudflareException
-import com.drejo.openeksin.ui.theme.LocalEkColors
-import com.drejo.openeksin.ui.theme.TextSizes
 
 sealed interface TopicListUiState {
     data object Loading : TopicListUiState
@@ -41,7 +33,18 @@ sealed interface TopicListUiState {
     data class NeedsCloudflare(val challengeUrl: String) : TopicListUiState
 }
 
-/** One pager page: loads and renders a single feed's topic list. */
+private class LoadGate {
+    private var active = false
+    fun tryBegin(): Boolean {
+        if (active) return false
+        active = true
+        return true
+    }
+    fun end() { active = false }
+    fun reset() { active = false }
+}
+
+/** One pager page: loads and renders a single feed's topic list with infinite scroll. */
 @Composable
 fun FeedPage(
     feed: Feed,
@@ -51,18 +54,69 @@ fun FeedPage(
     modifier: Modifier = Modifier,
 ) {
     val repository = remember { EksiRepository() }
-    val state by produceState<TopicListUiState>(TopicListUiState.Loading, feed.path, reloadKey) {
-        value = TopicListUiState.Loading
-        value = try {
-            TopicListUiState.Success(repository.topics(feed.path))
+    val topics = remember { mutableStateListOf<Topic>() }
+    var initialLoading by remember { mutableStateOf(true) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var hasMore by remember { mutableStateOf(true) }
+    var nextPage by remember(feed.path) { mutableIntStateOf(2) }
+    var cloudflareUrl by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val loadGate = remember { LoadGate() }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(feed.path, reloadKey) {
+        initialLoading = true
+        loadingMore = false
+        hasMore = true
+        nextPage = 2
+        cloudflareUrl = null
+        errorMessage = null
+        topics.clear()
+        loadGate.reset()
+        try {
+            val first = repository.topics(feed.path, 1)
+            topics.addAll(first)
+            hasMore = first.isNotEmpty()
         } catch (e: CloudflareException) {
-            TopicListUiState.NeedsCloudflare(e.challengeUrl)
+            cloudflareUrl = e.challengeUrl
         } catch (e: Exception) {
-            TopicListUiState.Error(e.message ?: "error")
+            errorMessage = e.message ?: "error"
+        } finally {
+            initialLoading = false
         }
     }
+
+    val state = when {
+        cloudflareUrl != null -> TopicListUiState.NeedsCloudflare(cloudflareUrl!!)
+        errorMessage != null && topics.isEmpty() -> TopicListUiState.Error(errorMessage!!)
+        initialLoading && topics.isEmpty() -> TopicListUiState.Loading
+        else -> TopicListUiState.Success(topics)
+    }
+
     TopicListScreen(
         state = state,
+        loadingMore = loadingMore,
+        onNearEnd = {
+            if (hasMore && !loadingMore && loadGate.tryBegin()) {
+                loadingMore = true
+                scope.launch {
+                    try {
+                        val more = repository.topics(feed.path, nextPage)
+                        if (more.isEmpty()) {
+                            hasMore = false
+                        } else {
+                            topics.addAll(more)
+                            nextPage++
+                        }
+                    } catch (_: Exception) {
+                        hasMore = false
+                    } finally {
+                        loadingMore = false
+                        loadGate.end()
+                    }
+                }
+            }
+        },
         onVerifyCloudflare = onVerifyCloudflare,
         onTopicClick = onTopicClick,
         modifier = modifier,
@@ -72,6 +126,8 @@ fun FeedPage(
 @Composable
 fun TopicListScreen(
     state: TopicListUiState,
+    loadingMore: Boolean = false,
+    onNearEnd: () -> Unit = {},
     onVerifyCloudflare: (String) -> Unit,
     onTopicClick: (Topic) -> Unit,
     modifier: Modifier = Modifier,
@@ -82,7 +138,20 @@ fun TopicListScreen(
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
 
             is TopicListUiState.Success ->
-                TopicList(topics = state.topics, onTopicClick = onTopicClick)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    NativeTopicList(
+                        topics = state.topics,
+                        onTopicClick = onTopicClick,
+                        onNearEnd = onNearEnd,
+                    )
+                    if (loadingMore) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(16.dp),
+                        )
+                    }
+                }
 
             is TopicListUiState.Error ->
                 CenteredMessage(message = state.message)
@@ -94,57 +163,6 @@ fun TopicListScreen(
                     onAction = { onVerifyCloudflare(state.challengeUrl) },
                 )
         }
-    }
-}
-
-@Composable
-private fun TopicList(topics: List<Topic>, onTopicClick: (Topic) -> Unit) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(topics) { topic ->
-            TopicRow(topic = topic, onClick = { onTopicClick(topic) })
-            HorizontalDivider(color = LocalEkColors.current.divider)
-        }
-    }
-}
-
-@Composable
-private fun TopicRow(topic: Topic, onClick: () -> Unit) {
-    val ek = LocalEkColors.current
-    // Matches topiclist_item_layout.xml: minHeight 50dp, count 40dp @ 8dp margin, title 15sp.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = 50.dp)
-            .clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (topic.entryCount.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .padding(8.dp)
-                    .widthIn(min = 40.dp, max = 40.dp)
-                    .defaultMinSize(minHeight = 34.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(ek.rankBadge),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = topic.entryCount,
-                    color = ek.rankBadgeText,
-                    fontSize = TextSizes.TopicCount,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        }
-        Text(
-            text = topic.title,
-            fontSize = TextSizes.TopicTitle,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 5.dp, top = 5.dp, end = 8.dp, bottom = 5.dp),
-        )
     }
 }
 
@@ -167,3 +185,5 @@ private fun CenteredMessage(
         }
     }
 }
+
+

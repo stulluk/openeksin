@@ -1,12 +1,16 @@
 package com.drejo.openeksin.data.model
 
+import androidx.compose.runtime.Immutable
+
 /** A run of entry content: plain text, or a link with an href. */
+@Immutable
 data class ContentSegment(
     val text: String,
     val href: String? = null,
 )
 
 /** A single entry inside a topic. */
+@Immutable
 data class Entry(
     val id: String,
     val author: String,

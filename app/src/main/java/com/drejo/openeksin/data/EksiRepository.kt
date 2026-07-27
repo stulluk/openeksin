@@ -1,17 +1,27 @@
 package com.drejo.openeksin.data
 
+import com.drejo.openeksin.data.model.AuthorEntry
 import com.drejo.openeksin.data.model.Message
 import com.drejo.openeksin.data.model.MessageThread
 import com.drejo.openeksin.data.model.Topic
 import com.drejo.openeksin.data.model.TopicDetail
 import com.drejo.openeksin.data.remote.EksiClient
 import com.drejo.openeksin.data.remote.Endpoints
+import com.drejo.openeksin.data.scraper.AuthorEntriesScraper
+import com.drejo.openeksin.data.scraper.AuthorProfileScraper
 import com.drejo.openeksin.data.scraper.ChannelScraper
 import com.drejo.openeksin.data.scraper.EntryScraper
 import com.drejo.openeksin.data.scraper.MessageScraper
 import com.drejo.openeksin.data.scraper.TopicIndexScraper
+import com.drejo.openeksin.data.remote.TopicUrl
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
 import java.net.URLEncoder
 
@@ -19,9 +29,21 @@ import java.net.URLEncoder
 class EksiRepository {
 
     /** Loads a topic-index feed (gündem / debe / bugün / a channel) by URL. */
-    suspend fun topics(path: String): List<Topic> = withContext(Dispatchers.IO) {
-        val html = EksiClient.getHtml(path, ajaxPartial = true)
+    suspend fun topics(path: String, page: Int = 1): List<Topic> = withContext(Dispatchers.IO) {
+        val url = topicIndexUrl(path, page)
+        val html = EksiClient.getHtml(url, ajaxPartial = true)
         TopicIndexScraper.parse(html)
+    }
+
+    private fun topicIndexUrl(path: String, page: Int): String {
+        if (page <= 1) return path
+        // "bugün" uses /index/feedrefresh — no paging in the app feed endpoint.
+        if (path.contains("/index/feedrefresh")) return path
+        // tarihte bugün / bugün-style paths use a /N suffix (matches Ekşin IndexObservable).
+        if (path.contains("/basliklar/tarihte-bugun") || path.contains("/basliklar/bugun")) {
+            return "$path/$page"
+        }
+        return if (path.contains("?")) "$path&p=$page" else "$path?p=$page"
     }
 
     /** Loads the channel list for the dynamic tabs. */
@@ -29,11 +51,20 @@ class EksiRepository {
         ChannelScraper.parse(EksiClient.getHtml(Endpoints.CHANNELS, ajaxPartial = true))
     }
 
+    /** Warms the entry cache before navigation so the first paint is faster. */
+    fun prefetchEntries(path: String, page: Int = 1) {
+        EntryCache.prefetch(path, page) { loadEntriesUncached(path, page) }
+    }
+
     /**
      * Loads a topic page (entries). [path] is a relative link from a [Topic]
      * (e.g. "/baslik--123" or "/entry/456?debe=true") or an absolute URL.
      */
     suspend fun entries(path: String, page: Int = 1): TopicDetail = withContext(Dispatchers.IO) {
+        EntryCache.getOrLoad(path, page) { loadEntriesUncached(path, page) }
+    }
+
+    private suspend fun loadEntriesUncached(path: String, page: Int): TopicDetail {
         val base = if (path.startsWith("http")) path else Endpoints.BASE + path
         val url = if (page <= 1) {
             base
@@ -43,8 +74,50 @@ class EksiRepository {
             "$base?p=$page"
         }
         val html = EksiClient.getHtml(url, ajaxPartial = false)
-        EntryScraper.parse(html)
+        return EntryScraper.parse(html)
     }
+
+    private object EntryCache {
+        private val prefetchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val completed = ConcurrentHashMap<String, TopicDetail>()
+        private val inflight = ConcurrentHashMap<String, Deferred<TopicDetail>>()
+
+        private fun key(path: String, page: Int) = "$path|$page"
+
+        fun prefetch(path: String, page: Int, loader: suspend () -> TopicDetail) {
+            val cacheKey = key(path, page)
+            if (completed.containsKey(cacheKey) || inflight.containsKey(cacheKey)) return
+            inflight[cacheKey] = prefetchScope.async {
+                try {
+                    loader().also { completed[cacheKey] = it }
+                } finally {
+                    inflight.remove(cacheKey)
+                }
+            }
+        }
+
+        suspend fun getOrLoad(path: String, page: Int, loader: suspend () -> TopicDetail): TopicDetail {
+            val cacheKey = key(path, page)
+            completed[cacheKey]?.let { return it }
+            inflight[cacheKey]?.let { return it.await() }
+            return coroutineScope {
+                val job = async {
+                    loader().also { completed[cacheKey] = it }
+                }
+                inflight[cacheKey] = job
+                try {
+                    job.await()
+                } finally {
+                    inflight.remove(cacheKey)
+                }
+            }
+        }
+
+        fun peek(path: String, page: Int): TopicDetail? = completed[key(path, page)]
+    }
+
+    /** Returns cached topic page data if prefetch or a prior load already completed. */
+    fun peekEntries(path: String, page: Int = 1): TopicDetail? = EntryCache.peek(path, page)
 
     /** Favorites (or un-favorites) an entry. Returns true on success. */
     suspend fun favorite(entryId: String, remove: Boolean): Boolean = withContext(Dispatchers.IO) {
@@ -64,6 +137,25 @@ class EksiRepository {
             )
             body.contains("true", ignoreCase = true)
         }
+
+    /** Featured entry from the profile intro block, if present. */
+    suspend fun authorProfileHighlight(nick: String): AuthorProfileScraper.Highlight? =
+        withContext(Dispatchers.IO) {
+            val html = EksiClient.getHtml(Endpoints.authorProfile(nick), ajaxPartial = false)
+            AuthorProfileScraper.parseHighlight(html)
+        }
+
+    /** Loads one page of an author feed (son-entryleri, en-cok-favorilenen-entryleri, …). */
+    suspend fun authorFeed(relativePath: String, nick: String, page: Int = 1): Pair<List<AuthorEntry>, Boolean> =
+        withContext(Dispatchers.IO) {
+            val url = Endpoints.authorFeedPage(relativePath, page)
+            val html = EksiClient.getHtml(url, ajaxPartial = true, referer = Endpoints.authorProfile(nick))
+            AuthorEntriesScraper.parse(html) to AuthorEntriesScraper.hasMore(html)
+        }
+
+    /** Loads one page of a user's recent entries (requires login for own profile). */
+    suspend fun authorEntries(nick: String, page: Int = 1): Pair<List<AuthorEntry>, Boolean> =
+        authorFeed(Endpoints.authorEntriesPath(nick), nick, page)
 
     /** Loads the message inbox (requires an authenticated session). */
     suspend fun messages(): List<MessageThread> = withContext(Dispatchers.IO) {

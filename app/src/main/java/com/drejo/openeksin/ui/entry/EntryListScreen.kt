@@ -14,13 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddCircle
@@ -30,7 +25,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MailOutline
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Save
@@ -40,11 +34,11 @@ import androidx.compose.material.icons.filled.ShortText
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.filled.FirstPage
 import androidx.compose.material.icons.filled.LastPage
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.material3.Surface
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,28 +56,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.CoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.drejo.openeksin.data.EksiRepository
@@ -99,11 +83,10 @@ import com.drejo.openeksin.data.remote.Endpoints
 import com.drejo.openeksin.data.remote.TopicUrl
 import com.drejo.openeksin.ui.theme.EksiPalette
 import com.drejo.openeksin.ui.theme.LocalEkColors
-import com.drejo.openeksin.ui.theme.TextSizes
+import com.drejo.openeksin.util.PerfTrace
 import kotlinx.coroutines.launch
-
-private const val COLLAPSED_LINES = 8
-private const val URL_TAG = "URL"
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private sealed interface EntryUiState {
     data object Loading : EntryUiState
@@ -120,6 +103,7 @@ fun EntryListScreen(
     onBack: () -> Unit,
     onVerifyCloudflare: (String) -> Unit,
     onOpenLink: (href: String, title: String) -> Unit,
+    onOpenAuthor: (String) -> Unit,
     onCompose: (Topic, String, String?) -> Unit,
     onReload: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -130,13 +114,21 @@ fun EntryListScreen(
     val context = LocalContext.current
     val isLoggedIn = SessionManager.isLoggedIn
 
+    LaunchedEffect(topic.link) {
+        PerfTrace.markEntryScreenOpen(topic.link)
+    }
+
     var activeLink by remember(topic.link) { mutableStateOf(topic.link) }
     var topicMeta by remember { mutableStateOf<TopicDetail?>(null) }
     var isTracked by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var findOpen by remember { mutableStateOf(false) }
 
-    var pageCount by remember(activeLink, reloadKey) { mutableIntStateOf(1) }
+    var pageCount by remember(activeLink, reloadKey) {
+        mutableIntStateOf(
+            repository.peekEntries(activeLink, 1)?.pageCount?.coerceAtLeast(1) ?: 1,
+        )
+    }
     val pagerState = rememberPagerState(pageCount = { pageCount.coerceAtLeast(1) })
 
     fun navigateTopicLink(link: String) {
@@ -147,18 +139,6 @@ fun EntryListScreen(
     val topicBasePath = remember(topicMeta, activeLink) {
         val path = topicMeta?.titlePath?.takeIf { it.isNotBlank() } ?: activeLink
         TopicUrl.clean(if (path.startsWith("http")) path.removePrefix(Endpoints.BASE) else path)
-    }
-
-    // Learn total page count and topic metadata from the first fetch.
-    LaunchedEffect(activeLink, reloadKey) {
-        runCatching { repository.entries(activeLink, 1) }.getOrNull()?.let { detail ->
-            pageCount = detail.pageCount.coerceAtLeast(1)
-            topicMeta = detail
-            isTracked = detail.isTracked
-            if (detail.titlePath.isNotBlank() && activeLink.contains("?q=")) {
-                activeLink = detail.titlePath
-            }
-        }
     }
 
     val currentPage = pagerState.currentPage + 1
@@ -298,35 +278,36 @@ fun EntryListScreen(
                     PagerBar(
                         current = currentPage,
                         count = pageCount,
-                        onFirst = { scope.launch { pagerState.animateScrollToPage(0) } },
-                        onLast = { scope.launch { pagerState.animateScrollToPage(pageCount - 1) } },
+                        onFirst = { scope.launch { pagerState.scrollToPage(0) } },
+                        onLast = { scope.launch { pagerState.scrollToPage(pageCount - 1) } },
                     )
                 }
             }
         },
     ) { innerPadding ->
-        val listBg = if (isSystemInDarkTheme()) {
-            EksiPalette.DarkBackground
-        } else {
-            EksiPalette.LightEntryListBackground
-        }
+        val listBg = LocalEkColors.current.entryListBg
+        val topicSessionKey = remember(activeLink) { TopicUrl.clean(activeLink) }
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .background(listBg),
-            beyondBoundsPageCount = 1,
+            beyondViewportPageCount = 0,
             userScrollEnabled = pageCount > 1,
         ) { pageIndex ->
             EntryPage(
+                sessionKey = topicSessionKey,
                 topic = topic.copy(title = displayTitle, link = activeLink),
                 page = pageIndex + 1,
+                topicPageCount = pageCount,
+                pagerState = pagerState,
                 reloadKey = reloadKey,
                 listBg = listBg,
                 repository = repository,
                 onVerifyCloudflare = onVerifyCloudflare,
                 onOpenLink = onOpenLink,
+                onOpenAuthor = onOpenAuthor,
                 onPageCount = { count -> if (count > 0) pageCount = count },
                 onMeta = { detail ->
                     topicMeta = detail
@@ -339,64 +320,134 @@ fun EntryListScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun EntryPage(
+    sessionKey: String,
     topic: Topic,
     page: Int,
+    topicPageCount: Int,
+    pagerState: PagerState,
     reloadKey: Int,
     listBg: Color,
     repository: EksiRepository,
     onVerifyCloudflare: (String) -> Unit,
     onOpenLink: (String, String) -> Unit,
+    onOpenAuthor: (String) -> Unit,
     onPageCount: (Int) -> Unit,
     onMeta: (TopicDetail) -> Unit,
     onCompose: (Topic, String, String?) -> Unit,
     onReload: () -> Unit,
 ) {
-    val state by produceState<EntryUiState>(EntryUiState.Loading, topic.link, page, reloadKey) {
-        value = EntryUiState.Loading
-        value = try {
-            EntryUiState.Success(repository.entries(topic.link, page))
+    val scope = rememberCoroutineScope()
+    val fetchPath = topic.link
+    val prefetched = remember(sessionKey, page, topic.link) {
+        repository.peekEntries(topic.link, page)
+    }
+    var baseDetail by remember(sessionKey, page) { mutableStateOf(prefetched) }
+    var initialLoading by remember(sessionKey, page) { mutableStateOf(prefetched == null) }
+    var loadError by remember { mutableStateOf<EntryUiState?>(null) }
+    val entries = remember(sessionKey, page) {
+        mutableStateListOf<Entry>().apply {
+            prefetched?.entries?.let { addAll(it) }
+        }
+    }
+    var nextPageToLoad by remember(sessionKey, page) { mutableIntStateOf(page + 1) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var menuEntry by remember { mutableStateOf<Entry?>(null) }
+    val loadGate = remember { LoadGate() }
+
+    LaunchedEffect(sessionKey, page, topic.link, reloadKey) {
+        if (reloadKey == 0) {
+            repository.peekEntries(topic.link, page)?.let { cached ->
+                EntrySpannableCache.warm(cached.entries)
+                baseDetail = cached
+                if (entries.isEmpty()) {
+                    entries.addAll(cached.entries)
+                }
+                initialLoading = false
+                onPageCount(cached.pageCount)
+                onMeta(cached)
+                loadGate.reset()
+                return@LaunchedEffect
+            }
+        }
+        initialLoading = true
+        loadError = null
+        entries.clear()
+        nextPageToLoad = page + 1
+        loadingMore = false
+        loadGate.reset()
+        EntrySpannableCache.clear()
+        try {
+            PerfTrace.markEntryFetchStart(topic.link, page)
+            val detail = repository.entries(fetchPath, page)
+            withContext(Dispatchers.Default) {
+                EntrySpannableCache.warm(detail.entries)
+            }
+            baseDetail = detail
+            entries.addAll(detail.entries)
+            PerfTrace.markEntryFetchEnd(topic.link, page, detail.entries.size)
+            PerfTrace.logScroll("fetch_meta", "pageCount=${detail.pageCount} entries=${detail.entries.size}")
         } catch (e: CloudflareException) {
-            EntryUiState.NeedsCloudflare(e.challengeUrl)
+            loadError = EntryUiState.NeedsCloudflare(e.challengeUrl)
         } catch (e: Exception) {
-            EntryUiState.Error(e.message ?: "error")
+            loadError = EntryUiState.Error(e.message ?: "error")
+        } finally {
+            initialLoading = false
         }
     }
 
-    LaunchedEffect((state as? EntryUiState.Success)?.detail?.pageCount) {
-        (state as? EntryUiState.Success)?.detail?.pageCount?.let { onPageCount(it) }
+    LaunchedEffect(baseDetail?.pageCount) {
+        baseDetail?.pageCount?.let { onPageCount(it) }
+        loadGate.reset()
     }
-    LaunchedEffect((state as? EntryUiState.Success)?.detail) {
-        (state as? EntryUiState.Success)?.detail?.let { onMeta(it) }
+    LaunchedEffect(baseDetail) {
+        baseDetail?.let { onMeta(it) }
+    }
+
+    val totalPages = baseDetail?.pageCount?.coerceAtLeast(1) ?: topicPageCount.coerceAtLeast(1)
+    val hasMoreRemotePages = nextPageToLoad <= totalPages
+
+    fun loadNextRemotePage() {
+        val total = baseDetail?.pageCount?.coerceAtLeast(1) ?: topicPageCount.coerceAtLeast(1)
+        if (nextPageToLoad > total || loadingMore || !loadGate.tryBegin()) {
+            PerfTrace.logScroll(
+                "load_more_skip",
+                "loading=$loadingMore next=$nextPageToLoad total=$total base=${baseDetail?.pageCount} listSize=${entries.size}",
+            )
+            return
+        }
+        val pageToLoad = nextPageToLoad
+        PerfTrace.logScroll("load_more_start", "apiPage=$pageToLoad path=$fetchPath listSize=${entries.size}")
+        loadingMore = true
+        scope.launch {
+            try {
+                val more = repository.entries(fetchPath, pageToLoad)
+                withContext(Dispatchers.Default) {
+                    EntrySpannableCache.warm(more.entries)
+                }
+                if (more.entries.isNotEmpty()) {
+                    entries.addAll(more.entries)
+                }
+                nextPageToLoad = pageToLoad + 1
+                PerfTrace.logScroll(
+                    "load_more_done",
+                    "apiPage=$pageToLoad added=${more.entries.size} listSize=${entries.size} next=$nextPageToLoad",
+                )
+            } catch (e: Exception) {
+                PerfTrace.logScroll("load_more_error", "apiPage=$pageToLoad err=${e.message}")
+            } finally {
+                loadingMore = false
+                loadGate.end()
+            }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(listBg)) {
-        when (val s = state) {
-            is EntryUiState.Loading ->
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-
-            is EntryUiState.Success ->
-                if (s.detail.entries.isEmpty()) {
-                    Text("entry bulunamadı", modifier = Modifier.align(Alignment.Center))
-                } else {
-                    EntryList(
-                        entries = s.detail.entries,
-                        topic = topic,
-                        listBg = listBg,
-                        onOpenLink = onOpenLink,
-                        onCompose = onCompose,
-                        onReload = onReload,
-                    )
-                }
-
-            is EntryUiState.Error ->
-                Text(
-                    text = s.message,
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                )
-
-            is EntryUiState.NeedsCloudflare ->
+        when {
+            loadError is EntryUiState.NeedsCloudflare -> {
+                val url = (loadError as EntryUiState.NeedsCloudflare).challengeUrl
                 Column(
                     modifier = Modifier.fillMaxSize().padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -404,11 +455,69 @@ private fun EntryPage(
                 ) {
                     Text("cloudflare doğrulaması gerekiyor")
                     Button(
-                        onClick = { onVerifyCloudflare(s.challengeUrl) },
+                        onClick = { onVerifyCloudflare(url) },
                         modifier = Modifier.padding(top = 16.dp),
                     ) { Text("doğrula") }
                 }
+            }
+
+            loadError is EntryUiState.Error && entries.isEmpty() ->
+                Text(
+                    text = (loadError as EntryUiState.Error).message,
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                )
+
+            initialLoading && entries.isEmpty() && loadError == null ->
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+
+            !initialLoading && entries.isEmpty() && loadError == null ->
+                Text("entry bulunamadı", modifier = Modifier.align(Alignment.Center))
+
+            else -> {
+                NativeEntryList(
+                    entries = entries,
+                    topicLink = topic.link,
+                    scrollPage = page,
+                    canGoPrev = page > 1,
+                    canGoNext = page < totalPages && !hasMoreRemotePages,
+                    onNearEnd = { loadNextRemotePage() },
+                    onRequestPrevPage = {
+                        PerfTrace.logScroll("pager_prev", "from=$page")
+                        scope.launch {
+                            pagerState.scrollToPage((page - 2).coerceAtLeast(0))
+                        }
+                    },
+                    onRequestNextPage = {
+                        PerfTrace.logScroll("pager_next", "from=$page totalPages=$totalPages")
+                        scope.launch {
+                            pagerState.scrollToPage(page.coerceAtMost(totalPages - 1))
+                        }
+                    },
+                    onLinkClick = { href -> handleEntryLink(href, onOpenLink) },
+                    onAuthorClick = onOpenAuthor,
+                    onMenuClick = { menuEntry = it },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (loadingMore) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp),
+                    )
+                }
+            }
         }
+    }
+
+    menuEntry?.let { entry ->
+        EntryMenuSheet(
+            entry = entry,
+            topic = topic,
+            scope = scope,
+            onDismiss = { menuEntry = null },
+            onCompose = onCompose,
+            onReload = onReload,
+        )
     }
 }
 
@@ -465,173 +574,21 @@ private fun PagerBar(
     }
 }
 
-@Composable
-private fun EntryList(
-    entries: List<Entry>,
-    topic: Topic,
-    listBg: Color,
-    onOpenLink: (String, String) -> Unit,
-    onCompose: (Topic, String, String?) -> Unit,
-    onReload: () -> Unit,
-) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(listBg),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 4.dp, bottom = 8.dp),
-    ) {
-        items(entries, key = { it.id.ifEmpty { it.hashCode().toString() } }) { entry ->
-            EntryRow(entry, topic, onOpenLink, onCompose, onReload)
-        }
-    }
-}
+private class LoadGate {
+    private var active = false
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EntryRow(
-    entry: Entry,
-    topic: Topic,
-    onOpenLink: (String, String) -> Unit,
-    onCompose: (Topic, String, String?) -> Unit,
-    onReload: () -> Unit,
-) {
-    val ek = LocalEkColors.current
-    val dark = isSystemInDarkTheme()
-    val cardBg = if (dark) EksiPalette.DarkSurface else EksiPalette.LightBackground
-    var expanded by remember(entry.id) { mutableStateOf(false) }
-    var overflow by remember(entry.id) { mutableStateOf(false) }
-    var fullLines by remember(entry.id) { mutableIntStateOf(0) }
-    var showMenu by remember { mutableStateOf(false) }
-    val rowScope = rememberCoroutineScope()
-
-    val annotated = remember(entry.id) { buildContent(entry) }
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 5.dp, end = 5.dp, bottom = 5.dp),
-        shape = RoundedCornerShape(4.dp),
-        color = cardBg,
-        shadowElevation = 1.dp,
-        tonalElevation = 0.dp,
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            if (entry.favoriteCount.isNotEmpty() && entry.favoriteCount != "0") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 30.dp)
-                        .padding(5.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        entry.favoriteCount,
-                        fontSize = TextSizes.EntryAuthor,
-                        color = EksiPalette.LightSecondaryText,
-                        fontFamily = FontFamily.SansSerif,
-                    )
-                    Icon(
-                        imageVector = Icons.Filled.Opacity,
-                        contentDescription = "favori",
-                        tint = EksiPalette.LightSecondaryText,
-                        modifier = Modifier.padding(start = 5.dp).size(20.dp),
-                    )
-                }
-            }
-
-            HorizontalDivider(color = ek.divider, thickness = 1.dp)
-
-            // Hidden measure pass to learn the full line count.
-            if (fullLines == 0) {
-                ClickableText(
-                    text = annotated,
-                    onClick = {},
-                    style = androidx.compose.ui.text.TextStyle(
-                        fontSize = TextSizes.EntryBody,
-                        color = ek.mainText,
-                    ),
-                    modifier = Modifier.fillMaxWidth().height(0.dp).clipToBounds().alpha(0f),
-                    onTextLayout = { fullLines = it.lineCount },
-                )
-            }
-
-            ClickableText(
-                text = annotated,
-                onClick = { offset ->
-                    annotated.getStringAnnotations(URL_TAG, offset, offset).firstOrNull()?.let {
-                        handleLink(it.item, onOpenLink)
-                    }
-                },
-                style = androidx.compose.ui.text.TextStyle(
-                    fontSize = TextSizes.EntryBody,
-                    color = ek.mainText,
-                ),
-                maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_LINES,
-                overflow = TextOverflow.Ellipsis,
-                onTextLayout = { result: TextLayoutResult ->
-                    overflow = result.hasVisualOverflow
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(5.dp),
-            )
-
-            if (!expanded && (overflow || fullLines > COLLAPSED_LINES)) {
-                val remaining = (fullLines - COLLAPSED_LINES).coerceAtLeast(1)
-                HorizontalDivider(color = ek.divider, thickness = 1.dp)
-                Text(
-                    text = "devamını okuyayım… ($remaining satır)",
-                    fontSize = TextSizes.EntryAuthor,
-                    fontWeight = FontWeight.Bold,
-                    color = EksiPalette.LightReadMore,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { expanded = true }
-                        .padding(horizontal = 5.dp, vertical = 4.dp),
-                )
-            }
-
-            HorizontalDivider(color = ek.divider, thickness = 1.dp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 5.dp, end = 5.dp, top = 2.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = entry.author,
-                        fontSize = TextSizes.EntryAuthor,
-                        fontWeight = FontWeight.Bold,
-                        color = ek.mainText,
-                    )
-                    Text(
-                        text = entry.date,
-                        fontSize = TextSizes.EntryAuthor,
-                        color = ek.mainText,
-                    )
-                }
-                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        Icons.Filled.MoreVert,
-                        contentDescription = "menü",
-                        tint = ek.secondaryText,
-                        modifier = Modifier.size(30.dp),
-                    )
-                }
-            }
-        }
+    fun tryBegin(): Boolean {
+        if (active) return false
+        active = true
+        return true
     }
 
-    if (showMenu) {
-        EntryMenuSheet(
-            entry = entry,
-            topic = topic,
-            scope = rowScope,
-            onDismiss = { showMenu = false },
-            onCompose = onCompose,
-            onReload = onReload,
-        )
+    fun end() {
+        active = false
+    }
+
+    fun reset() {
+        active = false
     }
 }
 
@@ -859,29 +816,4 @@ private fun SheetItem(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
             modifier = Modifier.padding(start = 20.dp),
         )
     }
-}
-
-private fun buildContent(entry: Entry): AnnotatedString = buildAnnotatedString {
-    for (seg in entry.segments) {
-        if (seg.href.isNullOrEmpty()) {
-            append(seg.text)
-        } else {
-            pushStringAnnotation(URL_TAG, seg.href)
-            val external = seg.href.startsWith("http")
-            withStyle(
-                SpanStyle(
-                    color = if (external) Color(0xFF559CB4) else Color(0xFF177DB4),
-                    fontWeight = if (external) FontWeight.Normal else FontWeight.Bold,
-                    textDecoration = TextDecoration.None,
-                ),
-            ) {
-                append(seg.text)
-            }
-            pop()
-        }
-    }
-}
-
-private fun handleLink(href: String, onOpenLink: (String, String) -> Unit) {
-    onOpenLink(href, href.removePrefix("/").substringBefore("--").replace("-", " "))
 }
