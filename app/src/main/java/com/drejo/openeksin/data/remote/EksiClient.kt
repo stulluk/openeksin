@@ -42,10 +42,13 @@ object EksiClient {
      *   eksisozluk only returns the topic-list fragment with this header; full
      *   pages (e.g. for login detection) must be fetched without it.
      */
-    fun getHtml(url: String, ajaxPartial: Boolean = false): String {
+    fun getHtml(url: String, ajaxPartial: Boolean = false, referer: String? = null): String {
         val builder = Request.Builder().url(url).get()
         if (ajaxPartial) {
             builder.header("X-Requested-With", "XMLHttpRequest")
+        }
+        if (referer != null) {
+            builder.header("Referer", referer)
         }
         okHttp.newCall(builder.build()).execute().use { response: Response ->
             val body = response.body?.string().orEmpty()

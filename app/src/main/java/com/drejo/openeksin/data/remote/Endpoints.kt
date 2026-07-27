@@ -29,6 +29,26 @@ object Endpoints {
     const val BUDDY_INFO = "$BASE/takip-engellenmis"
     const val ENTRY = "$BASE/entry/"
     const val AUTOCOMPLETE = "$BASE/autocomplete/query"
+
+    fun authorProfile(nick: String): String =
+        "$BASE/biri/${nick.trim().replace(' ', '-')}"
+
+    fun authorEntriesPath(nick: String): String =
+        "/son-entryleri?nick=${java.net.URLEncoder.encode(nick.trim(), "UTF-8")}"
+
+    fun authorTopFavoritedPath(nick: String): String =
+        "/en-cok-favorilenen-entryleri?nick=${java.net.URLEncoder.encode(nick.trim(), "UTF-8")}"
+
+    /** Builds a paginated author feed URL from a relative path (with or without query). */
+    fun authorFeedPage(relativePath: String, page: Int): String {
+        val base = if (relativePath.startsWith("http")) relativePath else BASE + relativePath
+        if (page <= 1) return base
+        return if (base.contains("?")) "$base&p=$page" else "$base?p=$page"
+    }
+
+    @Deprecated("Use authorFeedPage(authorEntriesPath(nick), page)")
+    fun authorEntries(nick: String, page: Int): String =
+        authorFeedPage(authorEntriesPath(nick), page)
     const val ENTRY_ADD = "$BASE/entry/ekle"
     const val ENTRY_DELETE = "$BASE/entry/sil"
 
