@@ -12,14 +12,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.drejo.openeksin.R
 import com.drejo.openeksin.data.model.Topic
+import com.drejo.openeksin.ui.theme.EksiPalette
 import com.drejo.openeksin.ui.theme.LocalEkColors
 import com.drejo.openeksin.ui.theme.TextSizes
 
@@ -80,6 +81,8 @@ fun NativeTopicList(
     topics: List<Topic>,
     onTopicClick: (Topic) -> Unit,
     onNearEnd: () -> Unit,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ek = LocalEkColors.current
@@ -87,9 +90,12 @@ fun NativeTopicList(
     val rankBadgeText = ek.rankBadgeText.toArgb()
     val titleColor = ek.mainText.toArgb()
     val dividerColor = ek.divider.toArgb()
+    val refreshBg = ek.entryListBg.toArgb()
+    val refreshAccent = EksiPalette.Blue.toArgb()
     val titleSizeSp = TextSizes.TopicTitle.value
     val countSizeSp = TextSizes.TopicCount.value
     val nearEndCallback = remember(onNearEnd) { onNearEnd }
+    val refreshCallback = remember(onRefresh) { onRefresh }
 
     AndroidView(
         modifier = modifier
@@ -97,7 +103,7 @@ fun NativeTopicList(
             .clipToBounds(),
         factory = { ctx ->
             val adapter = TopicAdapter(onTopicClick)
-            RecyclerView(ctx).apply {
+            val recyclerView = RecyclerView(ctx).apply {
                 layoutManager = LinearLayoutManager(ctx)
                 setHasFixedSize(true)
                 itemAnimator = null
@@ -116,8 +122,26 @@ fun NativeTopicList(
                     }
                 })
             }
+            SwipeRefreshLayout(ctx).apply {
+                addView(
+                    recyclerView,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    ),
+                )
+                setTag(R.id.tag_recycler_view, recyclerView)
+                setOnRefreshListener {
+                    (getTag(R.id.tag_on_refresh) as? () -> Unit)?.invoke()
+                }
+            }
         },
-        update = { rv ->
+        update = { swipe ->
+            swipe.setTag(R.id.tag_on_refresh, refreshCallback)
+            swipe.isRefreshing = isRefreshing
+            swipe.setProgressBackgroundColorSchemeColor(refreshBg)
+            swipe.setColorSchemeColors(refreshAccent)
+            val rv = swipe.getTag(R.id.tag_recycler_view) as RecyclerView
             val adapter = rv.adapter as TopicAdapter
             adapter.rankBadgeColor = rankBadge
             adapter.rankBadgeTextColor = rankBadgeText

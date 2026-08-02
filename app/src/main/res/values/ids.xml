@@ -6,5 +6,7 @@
     <item name="tag_on_prev" type="id" />
     <item name="tag_on_next" type="id" />
     <item name="tag_on_near_end" type="id" />
+    <item name="tag_on_refresh" type="id" />
+    <item name="tag_recycler_view" type="id" />
     <item name="tag_entry_link_click" type="id" />
 </resources>

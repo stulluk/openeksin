@@ -63,20 +63,27 @@ fun FeedPage(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val loadGate = remember { LoadGate() }
     val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(feed.path, reloadKey) {
-        initialLoading = true
-        loadingMore = false
+    suspend fun loadFirstPage() {
         hasMore = true
         nextPage = 2
         cloudflareUrl = null
         errorMessage = null
-        topics.clear()
         loadGate.reset()
+        val first = repository.topics(feed.path, 1)
+        topics.clear()
+        topics.addAll(first)
+        hasMore = first.isNotEmpty()
+    }
+
+    LaunchedEffect(feed.path, reloadKey) {
+        initialLoading = true
+        loadingMore = false
+        refreshing = false
+        topics.clear()
         try {
-            val first = repository.topics(feed.path, 1)
-            topics.addAll(first)
-            hasMore = first.isNotEmpty()
+            loadFirstPage()
         } catch (e: CloudflareException) {
             cloudflareUrl = e.challengeUrl
         } catch (e: Exception) {
@@ -96,6 +103,22 @@ fun FeedPage(
     TopicListScreen(
         state = state,
         loadingMore = loadingMore,
+        isRefreshing = refreshing,
+        onRefresh = {
+            if (refreshing || initialLoading) return@TopicListScreen
+            refreshing = true
+            scope.launch {
+                try {
+                    loadFirstPage()
+                } catch (e: CloudflareException) {
+                    cloudflareUrl = e.challengeUrl
+                } catch (e: Exception) {
+                    errorMessage = e.message ?: "error"
+                } finally {
+                    refreshing = false
+                }
+            }
+        },
         onNearEnd = {
             if (hasMore && !loadingMore && loadGate.tryBegin()) {
                 loadingMore = true
@@ -127,6 +150,8 @@ fun FeedPage(
 fun TopicListScreen(
     state: TopicListUiState,
     loadingMore: Boolean = false,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onNearEnd: () -> Unit = {},
     onVerifyCloudflare: (String) -> Unit,
     onTopicClick: (Topic) -> Unit,
@@ -143,6 +168,8 @@ fun TopicListScreen(
                         topics = state.topics,
                         onTopicClick = onTopicClick,
                         onNearEnd = onNearEnd,
+                        isRefreshing = isRefreshing,
+                        onRefresh = onRefresh,
                     )
                     if (loadingMore) {
                         CircularProgressIndicator(
