@@ -11,6 +11,7 @@ import com.drejo.openeksin.data.scraper.AuthorEntriesScraper
 import com.drejo.openeksin.data.scraper.AuthorProfileScraper
 import com.drejo.openeksin.data.scraper.ChannelScraper
 import com.drejo.openeksin.data.scraper.EntryScraper
+import com.drejo.openeksin.data.scraper.EntryMetaScraper
 import com.drejo.openeksin.data.scraper.MessageScraper
 import com.drejo.openeksin.data.scraper.TopicIndexScraper
 import com.drejo.openeksin.data.remote.TopicUrl
@@ -19,7 +20,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
@@ -28,12 +32,51 @@ import java.net.URLEncoder
 /** Read-only data access for topic feeds and entries. */
 class EksiRepository {
 
+    private val debeFavoriteCountCache = ConcurrentHashMap<String, String>()
+    private val debeEnrichSemaphore = Semaphore(6)
+
     /** Loads a topic-index feed (gündem / debe / bugün / a channel) by URL. */
     suspend fun topics(path: String, page: Int = 1): List<Topic> = withContext(Dispatchers.IO) {
         val url = topicIndexUrl(path, page)
         val html = EksiClient.getHtml(url, ajaxPartial = true)
         TopicIndexScraper.parse(html)
     }
+
+    fun isDebeFeed(path: String): Boolean =
+        path == Endpoints.DEBE || path.endsWith("/debe") || path.contains("/debe?")
+
+    /** Fills missing debe favorite counts from entry partials (list HTML omits them). */
+    suspend fun enrichDebeFavoriteCounts(topics: List<Topic>): List<Topic> =
+        withContext(Dispatchers.IO) {
+            coroutineScope {
+                topics.map { topic ->
+                    async {
+                        if (topic.entryCount.isNotEmpty()) return@async topic
+                        val entryId = entryIdFromLink(topic.link) ?: return@async topic
+                        debeFavoriteCountCache[entryId]?.let { cached ->
+                            return@async topic.copy(entryCount = cached)
+                        }
+                        val count = debeEnrichSemaphore.withPermit {
+                            fetchEntryFavoriteCount(entryId)
+                        }
+                        if (count.isNotEmpty()) {
+                            debeFavoriteCountCache[entryId] = count
+                            topic.copy(entryCount = count)
+                        } else {
+                            topic
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
+
+    private fun entryIdFromLink(link: String): String? =
+        Regex("""/entry/(\d+)""").find(link)?.groupValues?.get(1)
+
+    private fun fetchEntryFavoriteCount(entryId: String): String = runCatching {
+        val html = EksiClient.getHtml(Endpoints.ENTRY + entryId, ajaxPartial = true)
+        EntryMetaScraper.favoriteCount(html)
+    }.getOrDefault("")
 
     private fun topicIndexUrl(path: String, page: Int): String {
         if (page <= 1) return path

@@ -19,12 +19,15 @@ object TopicIndexScraper {
             .ifEmpty { document.select("ul.topic-list li a") }
 
         return anchors.mapNotNull { a ->
+            val link = a.attr("href").trim()
+            if (link.startsWith("http") || a.hasClass("sponsored")) {
+                return@mapNotNull null
+            }
             val childElements = a.children()
-            // debe: title in span.caption, count in span.value.
+            // debe: title in span.caption; favorite count may be in span.value or fetched later.
             val caption = a.selectFirst("span.caption")?.text()?.trim()
             val ownText = a.ownText().trim()
             val title = caption ?: ownText
-            val link = a.attr("href").trim()
             if (title.isEmpty() || link.isEmpty()) {
                 null
             } else {

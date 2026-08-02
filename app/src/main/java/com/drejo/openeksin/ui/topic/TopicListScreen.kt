@@ -65,6 +65,9 @@ fun FeedPage(
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
 
+    suspend fun enrichIfDebe(items: List<Topic>): List<Topic> =
+        if (repository.isDebeFeed(feed.path)) repository.enrichDebeFavoriteCounts(items) else items
+
     suspend fun loadFirstPage() {
         hasMore = true
         nextPage = 2
@@ -84,6 +87,12 @@ fun FeedPage(
         topics.clear()
         try {
             loadFirstPage()
+            initialLoading = false
+            if (repository.isDebeFeed(feed.path)) {
+                val enriched = enrichIfDebe(topics.toList())
+                topics.clear()
+                topics.addAll(enriched)
+            }
         } catch (e: CloudflareException) {
             cloudflareUrl = e.challengeUrl
         } catch (e: Exception) {
@@ -110,6 +119,11 @@ fun FeedPage(
             scope.launch {
                 try {
                     loadFirstPage()
+                    if (repository.isDebeFeed(feed.path)) {
+                        val enriched = enrichIfDebe(topics.toList())
+                        topics.clear()
+                        topics.addAll(enriched)
+                    }
                 } catch (e: CloudflareException) {
                     cloudflareUrl = e.challengeUrl
                 } catch (e: Exception) {
@@ -128,7 +142,7 @@ fun FeedPage(
                         if (more.isEmpty()) {
                             hasMore = false
                         } else {
-                            topics.addAll(more)
+                            topics.addAll(enrichIfDebe(more))
                             nextPage++
                         }
                     } catch (_: Exception) {
