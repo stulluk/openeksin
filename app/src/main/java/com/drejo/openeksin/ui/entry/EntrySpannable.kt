@@ -9,6 +9,7 @@ import android.text.style.StyleSpan
 import android.view.View
 import android.widget.TextView
 import com.drejo.openeksin.R
+import com.drejo.openeksin.data.model.ContentSegment
 import com.drejo.openeksin.data.model.Entry
 import java.util.concurrent.ConcurrentHashMap
 
@@ -32,9 +33,16 @@ internal object EntrySpannableCache {
     }
 }
 
-internal fun buildEntrySpannable(entry: Entry): SpannableStringBuilder {
+internal fun buildEntrySpannable(entry: Entry): SpannableStringBuilder =
+    buildSegmentsSpannable(entry.segments)
+
+internal fun buildSegmentsSpannable(
+    segments: List<ContentSegment>,
+    internalLinkColor: Int = InternalLinkColor,
+    externalLinkColor: Int = ExternalLinkColor,
+): SpannableStringBuilder {
     val builder = SpannableStringBuilder()
-    for (seg in entry.segments) {
+    for (seg in segments) {
         val start = builder.length
         builder.append(seg.text)
         val href = seg.href
@@ -42,7 +50,7 @@ internal fun buildEntrySpannable(entry: Entry): SpannableStringBuilder {
             val end = builder.length
             val external = href.startsWith("http")
             builder.setSpan(
-                ForegroundColorSpan(if (external) ExternalLinkColor else InternalLinkColor),
+                ForegroundColorSpan(if (external) externalLinkColor else internalLinkColor),
                 start,
                 end,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,

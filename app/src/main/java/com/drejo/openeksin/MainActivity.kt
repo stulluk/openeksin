@@ -245,6 +245,7 @@ private fun AppRoot() {
         is Screen.Thread -> MessageThreadScreen(
             thread = current.thread,
             onBack = { back() },
+            onOpenLink = onOpenLink,
             onDeleted = { messagesReload++; back() },
         )
 

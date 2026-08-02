@@ -14,5 +14,6 @@ data class MessageThread(
 data class Message(
     val incoming: Boolean,
     val text: String,
+    val segments: List<ContentSegment> = emptyList(),
     val date: String,
 )

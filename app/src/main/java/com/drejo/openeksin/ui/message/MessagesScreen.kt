@@ -46,6 +46,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import android.text.method.LinkMovementMethod
+import android.widget.TextView
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.viewinterop.AndroidView
+import com.drejo.openeksin.R
+import com.drejo.openeksin.data.model.ContentSegment
+import com.drejo.openeksin.ui.entry.buildSegmentsSpannable
+import com.drejo.openeksin.ui.entry.handleEntryLink
 import com.drejo.openeksin.data.EksiRepository
 import com.drejo.openeksin.data.model.Message
 import com.drejo.openeksin.data.model.MessageThread
@@ -146,7 +154,12 @@ private fun ThreadRow(thread: MessageThread, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit, onDeleted: () -> Unit = onBack) {
+fun MessageThreadScreen(
+    thread: MessageThread,
+    onBack: () -> Unit,
+    onOpenLink: (String, String) -> Unit,
+    onDeleted: () -> Unit = onBack,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { EksiRepository() }
@@ -211,7 +224,12 @@ fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit, onDeleted: ()
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
                         ) {
-                            items(messages) { message -> MessageBubble(message) }
+                            items(messages) { message ->
+                                MessageBubble(
+                                    message = message,
+                                    onLinkClick = { href -> handleEntryLink(href, onOpenLink) },
+                                )
+                            }
                         }
                 }
             }
@@ -255,10 +273,12 @@ fun MessageThreadScreen(thread: MessageThread, onBack: () -> Unit, onDeleted: ()
 }
 
 @Composable
-private fun MessageBubble(message: Message) {
+private fun MessageBubble(message: Message, onLinkClick: (String) -> Unit) {
     val ek = LocalEkColors.current
     val bubbleColor = if (message.incoming) ek.divider else EksiPalette.RankBadge
     val textColor = if (message.incoming) ek.mainText else Color.White
+    val segments = message.segments.ifEmpty { listOf(ContentSegment(message.text)) }
+    val hasLinks = segments.any { !it.href.isNullOrEmpty() }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.incoming) Arrangement.Start else Arrangement.End,
@@ -270,7 +290,33 @@ private fun MessageBubble(message: Message) {
                 .background(bubbleColor)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            Text(message.text, fontSize = 14.sp, color = textColor)
+            if (hasLinks) {
+                AndroidView(
+                    modifier = Modifier.fillMaxWidth(),
+                    factory = { ctx ->
+                        TextView(ctx).apply {
+                            textSize = 14f
+                            movementMethod = LinkMovementMethod.getInstance()
+                            setTextIsSelectable(false)
+                        }
+                    },
+                    update = { tv ->
+                        tv.setTextColor(textColor.toArgb())
+                        tv.setTag(R.id.tag_entry_link_click, onLinkClick)
+                        tv.text = if (message.incoming) {
+                            buildSegmentsSpannable(segments)
+                        } else {
+                            buildSegmentsSpannable(
+                                segments,
+                                internalLinkColor = Color.White.toArgb(),
+                                externalLinkColor = 0xFFE8F4FF.toInt(),
+                            )
+                        }
+                    },
+                )
+            } else {
+                Text(message.text, fontSize = 14.sp, color = textColor)
+            }
             if (message.date.isNotEmpty()) {
                 Text(
                     text = message.date,

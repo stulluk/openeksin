@@ -19,7 +19,10 @@ object MessageScraper {
             val h2 = a?.selectFirst("h2")
             val nick = h2?.ownText()?.trim().orEmpty()
             val badge = h2?.selectFirst("small")?.text()?.trim().orEmpty()
-            val preview = a?.selectFirst("p")?.text()?.trim().orEmpty()
+            val previewEl = a?.selectFirst("p")
+            val preview = previewEl?.let { el ->
+                HtmlSegmentParser.parse(el).joinToString("") { s -> s.text }.trim()
+            }.orEmpty()
             val time = article.selectFirst("time")
             val date = (time?.text()?.takeIf { it.isNotBlank() } ?: time?.attr("datetime")).orEmpty()
             MessageThread(
@@ -36,9 +39,14 @@ object MessageScraper {
     fun parseThread(html: String): List<Message> {
         return Jsoup.parse(html).select("#message-thread article").map { article ->
             val time = article.selectFirst("time")
+            val body = article.selectFirst("p")
+            val segments = body?.let { HtmlSegmentParser.parse(it) }.orEmpty()
             Message(
                 incoming = article.hasClass("incoming"),
-                text = article.selectFirst("p")?.text()?.trim().orEmpty(),
+                text = segments.joinToString("") { it.text }.trim().ifEmpty {
+                    body?.text()?.trim().orEmpty()
+                },
+                segments = segments,
                 date = (time?.text()?.takeIf { it.isNotBlank() } ?: time?.attr("datetime")).orEmpty(),
             )
         }
