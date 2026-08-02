@@ -56,6 +56,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -347,10 +349,13 @@ private fun HomeScreen(
                     onTabSelected = { index ->
                         scope.launch { pagerState.scrollToPage(index) }
                     },
+                    modifier = Modifier.zIndex(1f),
                 )
                 HorizontalPager(
                     state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clipToBounds(),
                 ) { page ->
                     feeds.getOrNull(page)?.let { feed ->
                         FeedPage(

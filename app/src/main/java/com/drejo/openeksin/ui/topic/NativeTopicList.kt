@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -91,13 +92,17 @@ fun NativeTopicList(
     val nearEndCallback = remember(onNearEnd) { onNearEnd }
 
     AndroidView(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .clipToBounds(),
         factory = { ctx ->
             val adapter = TopicAdapter(onTopicClick)
             RecyclerView(ctx).apply {
                 layoutManager = LinearLayoutManager(ctx)
                 setHasFixedSize(true)
                 itemAnimator = null
+                clipToPadding = true
+                clipChildren = true
                 this.adapter = adapter
                 addOnScrollListener(object : RecyclerView.OnScrollListener() {
                     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
