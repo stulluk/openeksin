@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private sealed interface Screen {
-    data object Home : Screen
+    data class Home(val tabIndex: Int = 0) : Screen
     data class Entries(val topic: Topic) : Screen
     data class Compose(val topic: Topic, val draft: String = "", val entryId: String? = null) : Screen
     data object Messages : Screen
@@ -132,7 +132,7 @@ private fun AppRoot() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val backStack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val backStack = remember { mutableStateListOf<Screen>(Screen.Home()) }
     val repository = remember { EksiRepository() }
     fun navigate(screen: Screen) { backStack.add(screen) }
     fun back() { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) }
@@ -187,7 +187,14 @@ private fun AppRoot() {
     BackHandler(enabled = backStack.size > 1) { back() }
 
     when (val current = backStack.last()) {
-        Screen.Home -> HomeScreen(
+        is Screen.Home -> HomeScreen(
+            selectedTab = current.tabIndex,
+            onTabChange = { tab ->
+                val i = backStack.lastIndex
+                if (backStack[i] is Screen.Home) {
+                    backStack[i] = Screen.Home(tab)
+                }
+            },
             reloadKey = reloadKey,
             onVerifyCloudflare = onVerifyCloudflare,
             onTopicClick = onTopicClick,
@@ -272,6 +279,8 @@ private fun AppRoot() {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun HomeScreen(
+    selectedTab: Int,
+    onTabChange: (Int) -> Unit,
     reloadKey: Int,
     onVerifyCloudflare: (String) -> Unit,
     onTopicClick: (Topic) -> Unit,
@@ -297,7 +306,22 @@ private fun HomeScreen(
         }
     }
     val feeds = remember(channels) { Feeds.BUILTIN + channels }
-    val pagerState = rememberPagerState(pageCount = { feeds.size })
+    val safeTab = selectedTab.coerceIn(0, (feeds.size - 1).coerceAtLeast(0))
+    val pagerState = rememberPagerState(
+        initialPage = safeTab,
+        pageCount = { feeds.size },
+    )
+
+    LaunchedEffect(safeTab) {
+        if (pagerState.currentPage != safeTab) {
+            pagerState.scrollToPage(safeTab)
+        }
+    }
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage != safeTab) {
+            onTabChange(pagerState.currentPage)
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
