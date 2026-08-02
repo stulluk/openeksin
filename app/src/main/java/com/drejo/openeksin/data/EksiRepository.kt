@@ -11,6 +11,7 @@ import com.drejo.openeksin.data.scraper.AuthorEntriesScraper
 import com.drejo.openeksin.data.scraper.AuthorProfileScraper
 import com.drejo.openeksin.data.scraper.ChannelScraper
 import com.drejo.openeksin.data.scraper.EntryScraper
+import com.drejo.openeksin.data.scraper.DebeFavoriteCountCache
 import com.drejo.openeksin.data.scraper.EntryMetaScraper
 import com.drejo.openeksin.data.scraper.MessageScraper
 import com.drejo.openeksin.data.scraper.TopicIndexScraper
@@ -32,7 +33,6 @@ import java.net.URLEncoder
 /** Read-only data access for topic feeds and entries. */
 class EksiRepository {
 
-    private val debeFavoriteCountCache = ConcurrentHashMap<String, String>()
     private val debeEnrichSemaphore = Semaphore(6)
 
     /** Loads a topic-index feed (gündem / debe / bugün / a channel) by URL. */
@@ -53,18 +53,14 @@ class EksiRepository {
                     async {
                         if (topic.entryCount.isNotEmpty()) return@async topic
                         val entryId = entryIdFromLink(topic.link) ?: return@async topic
-                        debeFavoriteCountCache[entryId]?.let { cached ->
+                        DebeFavoriteCountCache.get(entryId)?.let { cached ->
                             return@async topic.copy(entryCount = cached)
                         }
                         val count = debeEnrichSemaphore.withPermit {
                             fetchEntryFavoriteCount(entryId)
                         }
-                        if (count.isNotEmpty()) {
-                            debeFavoriteCountCache[entryId] = count
-                            topic.copy(entryCount = count)
-                        } else {
-                            topic
-                        }
+                        val resolved = DebeFavoriteCountCache.apply(entryId, count)
+                        if (resolved.isNotEmpty()) topic.copy(entryCount = resolved) else topic
                     }
                 }.awaitAll()
             }

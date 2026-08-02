@@ -149,7 +149,10 @@ fun NativeTopicList(
             adapter.dividerColor = dividerColor
             adapter.titleSizeSp = titleSizeSp
             adapter.countSizeSp = countSizeSp
-            adapter.submitList(topics.toList())
+            val snapshot = topics.toList()
+            adapter.submitList(snapshot) {
+                rv.post { rv.requestLayout() }
+            }
         },
     )
 }

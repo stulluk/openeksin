@@ -16,6 +16,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.Alignment
@@ -65,40 +67,45 @@ fun FeedPage(
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
 
+    val loadMutex = remember { Mutex() }
+    var loadGeneration by remember(feed.path) { mutableIntStateOf(0) }
+
     suspend fun enrichIfDebe(items: List<Topic>): List<Topic> =
         if (repository.isDebeFeed(feed.path)) repository.enrichDebeFavoriteCounts(items) else items
 
-    suspend fun loadFirstPage() {
+    suspend fun replaceTopics(items: List<Topic>, generation: Int) {
+        if (generation != loadGeneration) return
+        topics.clear()
+        topics.addAll(items)
+    }
+
+    suspend fun loadAndShowFirstPage(generation: Int) {
+        val first = repository.topics(feed.path, 1)
+        if (generation != loadGeneration) return
         hasMore = true
         nextPage = 2
         cloudflareUrl = null
         errorMessage = null
         loadGate.reset()
-        val first = repository.topics(feed.path, 1)
-        topics.clear()
-        topics.addAll(first)
-        hasMore = first.isNotEmpty()
+        val display = enrichIfDebe(first)
+        replaceTopics(display, generation)
+        hasMore = display.isNotEmpty()
     }
 
     LaunchedEffect(feed.path, reloadKey) {
-        initialLoading = true
+        val generation = ++loadGeneration
+        val showBlockingLoader = topics.isEmpty()
+        initialLoading = showBlockingLoader
         loadingMore = false
         refreshing = false
-        topics.clear()
         try {
-            loadFirstPage()
-            initialLoading = false
-            if (repository.isDebeFeed(feed.path)) {
-                val enriched = enrichIfDebe(topics.toList())
-                topics.clear()
-                topics.addAll(enriched)
-            }
+            loadAndShowFirstPage(generation)
         } catch (e: CloudflareException) {
             cloudflareUrl = e.challengeUrl
         } catch (e: Exception) {
             errorMessage = e.message ?: "error"
         } finally {
-            initialLoading = false
+            if (generation == loadGeneration) initialLoading = false
         }
     }
 
@@ -106,7 +113,7 @@ fun FeedPage(
         cloudflareUrl != null -> TopicListUiState.NeedsCloudflare(cloudflareUrl!!)
         errorMessage != null && topics.isEmpty() -> TopicListUiState.Error(errorMessage!!)
         initialLoading && topics.isEmpty() -> TopicListUiState.Loading
-        else -> TopicListUiState.Success(topics)
+        else -> TopicListUiState.Success(topics.toList())
     }
 
     TopicListScreen(
@@ -117,12 +124,10 @@ fun FeedPage(
             if (refreshing || initialLoading) return@TopicListScreen
             refreshing = true
             scope.launch {
+                val generation = ++loadGeneration
                 try {
-                    loadFirstPage()
-                    if (repository.isDebeFeed(feed.path)) {
-                        val enriched = enrichIfDebe(topics.toList())
-                        topics.clear()
-                        topics.addAll(enriched)
+                    loadMutex.withLock {
+                        loadAndShowFirstPage(generation)
                     }
                 } catch (e: CloudflareException) {
                     cloudflareUrl = e.challengeUrl
