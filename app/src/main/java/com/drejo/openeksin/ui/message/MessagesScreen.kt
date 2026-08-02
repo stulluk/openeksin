@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -137,7 +138,8 @@ private fun ThreadRow(thread: MessageThread, onClick: () -> Unit) {
                     text = thread.preview,
                     fontSize = 13.sp,
                     color = ek.secondaryText,
-                    maxLines = 2,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
